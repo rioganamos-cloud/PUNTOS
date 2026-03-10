@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Río Fortuna | Programa de Beneficios</title>
+  <meta name="description" content="Programa de beneficios por niveles. Sumá puntos, subí de nivel y desbloqueá ventajas." />
+
+  <!-- Favicon: si subís tu logo como favicon.png, se verá acá -->
+  <link rel="icon" href="/favicon.png" onerror="this.remove()">
+  <!-- fallback por si no subiste favicon.png -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%25%22 height=%22100%25%22 fill=%22%236d28d9%22/><text x=%2250%25%22 y=%2260%25%22 text-anchor=%22middle%22 font-size=%2244%22 fill=%22%23f5c542%22 font-family=%22Arial%22>RF</text></svg>">
+
+  <link rel="stylesheet" href="styles.css" />
+
+  <style>
+    /* Ajustes solo para esta promo (mantiene tu estética) */
+    .promoWrap{ padding: 26px 0 44px; }
+    .promoHero{
+      margin-top: 14px;
+      padding: 22px;
+      border-radius: 22px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: linear-gradient(135deg, rgba(109,40,217,.14), rgba(255,255,255,.03));
+      box-shadow: 0 18px 60px rgba(0,0,0,.55);
+      position: relative;
+      overflow: hidden;
+    }
+    .brandRow{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .brandBadge{
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid rgba(245,197,66,.35);
+      background: rgba(245,197,66,.14);
+      font-weight: 900;
+      letter-spacing: .06em;
+    }
+    .promoHero h1{ margin: 10px 0 8px; font-size: 42px; letter-spacing:-.03em; }
+    .promoHero .lead{ margin:0; }
+    .kpis{ display:grid; grid-template-columns: 1fr; gap:12px; margin-top:14px; }
+    .kpi{
+      padding:14px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.16);
+    }
+    .kpi .t{ color: rgba(255,255,255,.70); font-size: 12px; letter-spacing:.10em; text-transform:uppercase; }
+    .kpi .v{ font-weight: 1000; margin-top: 6px; font-size: 18px; }
+    .ctaRow{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+    .btnLink{ text-decoration:none; }
+    .noteMini{ margin-top:10px; }
+    .promoSection{ margin-top: 16px; }
+
+    @media (min-width: 900px){
+      .kpis{ grid-template-columns: 1fr 1fr 1fr; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- HERO promo -->
+  <header class="hero">
+    <div class="container promoWrap">
+      <div class="promoHero">
+        <div class="brandRow">
+          <div class="brandBadge">RÍO FORTUNA</div>
+          <div class="pill">✨ Programa de beneficios por niveles</div>
+        </div>
+
+        <h1>Activá tus <span class="grad">beneficios</span> con puntos</h1>
+
+        <p class="lead">
+          Sumá puntos con cada carga, subí de nivel y accedé a ventajas exclusivas.
+          Los puntos se calculan sobre los <strong>últimos 30 días</strong>.
+        </p>
+
+        <div class="kpis">
+          <div class="kpi">
+            <div class="t">Regla</div>
+            <div class="v">$1.000 = 1 punto</div>
+          </div>
+          <div class="kpi">
+            <div class="t">Niveles</div>
+            <div class="v">Bronce → Leyenda</div>
+          </div>
+          <div class="kpi">
+            <div class="t">Canje</div>
+            <div class="v">Puntos → Créditos</div>
+          </div>
+        </div>
+
+        <div class="ctaRow">
+          <a class="btn btn--primary btnLink" href="/#mis-puntos">Ver mis puntos</a>
+          <a class="btn btn--ghost btnLink" href="/#niveles">Ver niveles</a>
+        </div>
+
+        <p class="muted small noteMini">
+          * Los créditos obtenidos por canje son <strong>no extraíbles</strong> y de uso interno.
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Cómo funciona -->
+    <section class="section promoSection">
+      <div class="section__head">
+        <h2>¿Cómo funciona?</h2>
+        <p class="muted">Rápido y simple.</p>
+      </div>
+
+      <div class="cards2">
+        <div class="card">
+          <h3>Sumás puntos</h3>
+          <p class="muted">Cada carga suma puntos automáticamente.</p>
+          <p><strong>$1.000 = 1 punto</strong></p>
+        </div>
+        <div class="card">
+          <h3>Subís de nivel</h3>
+          <p class="muted">Más nivel = más beneficios.</p>
+          <p><strong>Se cuenta sobre últimos 30 días</strong></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Niveles destacados -->
+    <section class="section promoSection" id="niveles">
+      <div class="section__head">
+        <h2>Niveles destacados</h2>
+        <p class="muted">Ejemplos de beneficios por nivel.</p>
+      </div>
+
+      <div class="levels">
+        <div class="level level--gold">
+          <div class="level__top">
+            <div class="level__ic">🥇</div>
+            <div>
+              <div class="level__name">Oro</div>
+              <div class="muted small">150 a 399 puntos</div>
+            </div>
+            <div class="pct">+20%</div>
+          </div>
+        </div>
+
+        <div class="level level--diamond">
+          <div class="level__top">
+            <div class="level__ic">💎</div>
+            <div>
+              <div class="level__name">Diamante</div>
+              <div class="muted small">400 a 999 puntos</div>
+            </div>
+            <div class="pct">+35%</div>
+          </div>
+          <div class="level__extra muted small">
+            + beneficio semanal exclusivo • + jornadas con puntos potenciados
+          </div>
+        </div>
+
+        <div class="level level--legend">
+          <div class="ribbon">Más buscado</div>
+          <div class="level__top">
+            <div class="level__ic">👑</div>
+            <div>
+              <div class="level__name">Leyenda</div>
+              <div class="muted small">1000+ puntos</div>
+            </div>
+            <div class="pct">+50%</div>
+          </div>
+          <div class="level__extra muted small">
+            + beneficio semanal premium • + beneficio mensual especial • + puntos potenciados • + permanencia
+          </div>
+        </div>
+      </div>
+
+      <div class="ctaRow" style="margin-top:14px;">
+        <a class="btn btn--primary btnLink" href="/#mis-puntos">Entrar y consultar</a>
+        <a class="btn btn--ghost btnLink" href="/">Ir al programa</a>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="muted small">Programa sujeto a cambios. Consultá soporte para más info.</div>
+      <div class="muted small">Río Fortuna</div>
+    </div>
+  </footer>
+</body>
+</html>
