@@ -2,361 +2,125 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Programa de Recompensas</title>
-  <meta name="description" content="Sumá puntos con cada carga, subí de categoría y desbloqueá beneficios VIP." />
+  <meta name="description" content="Sumá puntos con cada carga, subí de categoría y desbloqueá beneficios." />
+
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎰</text></svg>">
+
   <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
-  <!-- Topbar -->
-  <header class="topbar">
-    <div class="container topbar__inner">
-      <div class="brand">
-        <div class="brand__logo" aria-hidden="true">🎰</div>
-        <div class="brand__txt">
-          <div class="brand__name">Programa de Recompensas</div>
-          <div class="brand__sub">Puntos • Categorías • VIP</div>
-        </div>
-      </div>
-
-      <nav class="nav">
-        <a href="#como" data-scroll>Cómo funciona</a>
-        <a href="#niveles" data-scroll>Niveles</a>
-        <a href="#constancia" data-scroll>Constancia</a>
-        <a href="#vip" data-scroll>VIP</a>
-      </nav>
-
-      <button class="navbtn" id="navbtn" aria-expanded="false" aria-controls="navmobile">☰</button>
-    </div>
-
-    <div class="container navmobile" id="navmobile" hidden>
-      <a href="#como" data-scroll>Cómo funciona</a>
-      <a href="#niveles" data-scroll>Niveles</a>
-      <a href="#constancia" data-scroll>Constancia</a>
-      <a href="#vip" data-scroll>VIP</a>
-    </div>
+  <header class="header">
+    <h1>Programa de Recompensas</h1>
+    <p>Sumá puntos con cada carga y subí de categoría</p>
   </header>
 
-  <!-- Hero -->
-  <section class="hero" id="top">
-    <div class="container hero__grid">
-      <div class="hero__left reveal">
-        <div class="pill">✨ Sumá puntos y subí de categoría</div>
-        <h1>Jugá con ventaja: <span class="grad">recompensas reales</span></h1>
-        <p class="lead">Cada $1.000 que cargás suma 1 punto. Con puntos subís de nivel, ganás bonus en cargas y desbloqueás beneficios VIP.</p>
+  <main>
 
-        <div class="hero__bullets">
-          <div class="bullet"><span class="bullet__ic">🪙</span> Bonus en cada carga según tu nivel</div>
-          <div class="bullet"><span class="bullet__ic">🎁</span> Canje de puntos por fichas</div>
-          <div class="bullet"><span class="bullet__ic">👑</span> Niveles VIP con promos exclusivas</div>
-        </div>
+    <!-- MIS PUNTOS PRIMERO -->
+    <section class="section">
+      <h2>Mis puntos</h2>
+      <p>Ingresá tu usuario para ver tus puntos (últimos 30 días), tu nivel y el progreso.</p>
 
-        <div class="cta">
-          <a class="btn btn--primary" href="#niveles" data-scroll>Ver niveles</a>
-          <a class="btn btn--ghost" href="#como" data-scroll>Cómo funciona</a>
-        </div>
-
-        <!-- Barra de progreso demo -->
-        <div class="progresscard">
-          <div class="progresscard__row">
-            <div class="tag">PROGRESO</div>
-            <div class="muted small">Demo</div>
-          </div>
-          <div class="progressmeta">
-            <span class="badge badge--silver">PLATA</span>
-            <span class="muted small">→</span>
-            <span class="badge badge--gold">ORO</span>
-          </div>
-          <div class="progressbar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="68">
-            <div class="progressbar__fill" style="width:68%"></div>
-          </div>
-          <div class="progressnote">Te faltan <strong>35 puntos</strong> para llegar a <strong>ORO</strong>.</div>
-        </div>
+      <div class="consulta">
+        <input id="userQuery" placeholder="Tu usuario (ej: dana)" />
+        <button id="btnBuscar" type="button">Ver</button>
       </div>
 
-      <div class="hero__right reveal">
-        <!-- “Dibujos”/ilustración sin imágenes -->
-        <div class="poster">
-          <div class="poster__shine" aria-hidden="true"></div>
+      <div id="resBox" class="resultado" style="display:none;">
+        <h3 id="resTitle"></h3>
+        <p id="resText"></p>
 
-          <div class="poster__title">Escalera VIP</div>
-          <div class="poster__levels">
-            <div class="chip chip--bronze">🥉 Bronce</div>
-            <div class="chip chip--silver">🥈 Plata</div>
-            <div class="chip chip--gold">🥇 Oro</div>
-            <div class="chip chip--diamond">💎 Diamante</div>
-            <div class="chip chip--legend">👑 Leyenda</div>
-          </div>
+        <div class="barra">
+          <div id="resProg" class="barra-fill" style="width:0%;"></div>
+        </div>
+        <p id="resProgText" class="muted"></p>
 
-          <div class="poster__art" aria-hidden="true">
-            <div class="coin coin--a"></div>
-            <div class="coin coin--b"></div>
-            <div class="coin coin--c"></div>
-            <div class="cardvip"></div>
-            <div class="spark s1"></div>
-            <div class="spark s2"></div>
-            <div class="spark s3"></div>
-          </div>
+        <h4>Últimos movimientos</h4>
+        <ul id="movList"></ul>
+      </div>
+    </section>
 
-          <div class="poster__foot">
-            <div class="mini">
-              <div class="mini__k">Regla</div>
-              <div class="mini__v">$1.000 = 1 punto</div>
-            </div>
-            <div class="mini">
-              <div class="mini__k">Duración</div>
-              <div class="mini__v">Puntos válidos 30 días</div>
-            </div>
-          </div>
+    <!-- CÓMO FUNCIONA -->
+    <section class="section">
+      <h2>¿Cómo funcionan los puntos?</h2>
+      <p><strong>$1.000</strong> cargados = <strong>1 punto</strong></p>
+      <p class="muted">Los puntos se calculan sobre los <strong>últimos 30 días</strong> (ventana móvil).</p>
+    </section>
+
+    <!-- NIVELES (ACTUALIZADOS) -->
+    <section class="section">
+      <h2>Programa de niveles</h2>
+      <p class="muted">Tu nivel se calcula con tus <strong>puntos de los últimos 30 días</strong>.</p>
+
+      <div class="niveles-grid">
+        <div class="nivel bronce">
+          <h3>Bronce</h3>
+          <p>0 a 49 puntos</p>
+          <p><strong>+5% extra</strong></p>
         </div>
 
-        <div class="glow g1"></div>
-        <div class="glow g2"></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Cómo funciona -->
-  <section class="section" id="como">
-    <div class="container">
-      <div class="head reveal">
-        <h2>¿Cómo funciona?</h2>
-        <p class="muted">Simple y transparente: tus cargas suman puntos y esos puntos te suben de nivel.</p>
-      </div>
-
-      <div class="grid2">
-        <div class="card reveal">
-          <h3>Regla de puntos</h3>
-          <div class="rule">
-            <div class="rule__icon">🪙</div>
-            <div class="rule__text">
-              <div class="rule__big">$1.000 cargados = <span class="grad2">1 punto</span></div>
-              <div class="muted small">Los puntos se calculan sobre tus cargas.</div>
-            </div>
-          </div>
-
-          <div class="table">
-            <div class="trow thead"><div>Carga</div><div>Puntos</div></div>
-            <div class="trow"><div>$3.000</div><div>3</div></div>
-            <div class="trow"><div>$5.000</div><div>5</div></div>
-            <div class="trow"><div>$10.000</div><div>10</div></div>
-            <div class="trow"><div>$50.000</div><div>50</div></div>
-            <div class="trow"><div>$100.000</div><div>100</div></div>
-          </div>
+        <div class="nivel plata">
+          <h3>Plata</h3>
+          <p>50 a 149 puntos</p>
+          <p><strong>+10% extra</strong></p>
         </div>
 
-        <div class="card reveal">
-          <h3>Calculadora de puntos</h3>
-          <p class="muted small">Probá un monto y mirá cuántos puntos suma (demo).</p>
-          <div class="calc">
-            <label class="muted small" for="monto">Monto de carga</label>
-            <div class="calc__row">
-              <span class="calc__prefix">$</span>
-              <input id="monto" inputmode="numeric" placeholder="Ej: 25000" />
-              <button class="btn btn--small" id="btnCalc" type="button">Calcular</button>
-            </div>
-            <div class="calc__out">
-              <span class="muted small">Puntos:</span>
-              <span class="calc__pill" id="puntosOut">0</span>
-            </div>
-          </div>
-
-          <div class="note">
-            <div class="note__ic">⏳</div>
-            <div>
-              <div class="note__t"><strong>Duración de los puntos</strong></div>
-              <div class="muted small">Tus puntos tienen validez por <strong>30 días</strong> desde que se suman (ventana móvil).</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Niveles -->
-  <section class="section" id="niveles">
-    <div class="container">
-      <div class="head reveal">
-        <h2>Niveles y bonificación</h2>
-        <p class="muted">Subí de categoría con tus puntos y ganá más en cada carga.</p>
-      </div>
-
-      <div class="levels">
-        <article class="lvl lvl--bronze reveal">
-          <div class="lvl__top">
-            <div class="lvl__ic">🥉</div>
-            <div>
-              <h3>Bronce</h3>
-              <div class="muted small">0 – 49 puntos</div>
-            </div>
-            <div class="lvl__pct">+5%</div>
-          </div>
-          <div class="lvl__desc">Bonificación en todas tus cargas.</div>
-        </article>
-
-        <article class="lvl lvl--silver reveal">
-          <div class="lvl__top">
-            <div class="lvl__ic">🥈</div>
-            <div>
-              <h3>Plata</h3>
-              <div class="muted small">50 – 149 puntos</div>
-            </div>
-            <div class="lvl__pct">+10%</div>
-          </div>
-          <div class="lvl__desc">Más fichas extra en cada carga.</div>
-        </article>
-
-        <article class="lvl lvl--gold reveal">
-          <div class="lvl__top">
-            <div class="lvl__ic">🥇</div>
-            <div>
-              <h3>Oro</h3>
-              <div class="muted small">150 – 399 puntos</div>
-            </div>
-            <div class="lvl__pct">+15%</div>
-          </div>
-          <div class="lvl__desc">Accedés a promos mejoradas.</div>
-        </article>
-
-        <article class="lvl lvl--diamond reveal">
-          <div class="lvl__top">
-            <div class="lvl__ic">💎</div>
-            <div>
-              <h3>Diamante</h3>
-              <div class="muted small">400 – 999 puntos</div>
-            </div>
-            <div class="lvl__pct">+20%</div>
-          </div>
-          <ul class="list">
-            <li>Prioridad en retiros</li>
-            <li>Promociones especiales</li>
-            <li>Bonus sorpresa</li>
-          </ul>
-        </article>
-
-        <article class="lvl lvl--legend reveal">
-          <div class="ribbon">Más buscado</div>
-          <div class="lvl__top">
-            <div class="lvl__ic">👑</div>
-            <div>
-              <h3>Leyenda</h3>
-              <div class="muted small">1000+ puntos</div>
-            </div>
-            <div class="lvl__pct">VIP</div>
-          </div>
-          <ul class="list">
-            <li>Recompensas VIP exclusivas</li>
-            <li>Hasta <strong>$1.000.000</strong> en bonificación</li>
-            <li>Eventos / torneos privados</li>
-          </ul>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <!-- Constancia -->
-  <section class="section" id="constancia">
-    <div class="container">
-      <div class="head reveal">
-        <h2>Bonus de constancia</h2>
-        <p class="muted">Cargar varios días seguidos te da puntos extra.</p>
-      </div>
-
-      <div class="grid2">
-        <div class="card reveal">
-          <h3>Premios por racha</h3>
-          <div class="table">
-            <div class="trow thead"><div>Racha</div><div>Bonus</div></div>
-            <div class="trow"><div>3 días seguidos</div><div>+5 puntos</div></div>
-            <div class="trow"><div>5 días seguidos</div><div>+10 puntos</div></div>
-            <div class="trow"><div>7 días seguidos</div><div>+20 puntos</div></div>
-            <div class="trow"><div><strong>Semana completa</strong></div><div><strong>+50 puntos</strong></div></div>
-          </div>
-
-          <div class="call">
-            <span class="call__ic">🔥</span>
-            <span class="muted small">Tip: si ya venís con racha, conviene seguir para no perder el bonus.</span>
-          </div>
+        <div class="nivel oro">
+          <h3>Oro</h3>
+          <p>150 a 399 puntos</p>
+          <p><strong>+20% extra</strong></p>
         </div>
 
-        <div class="card reveal">
-          <h3>Visual de racha semanal</h3>
-          <p class="muted small">Ejemplo (demo):</p>
+        <div class="nivel diamante">
+          <h3>Diamante</h3>
+          <p>400 a 999 puntos</p>
+          <p><strong>+35% extra</strong></p>
+          <p class="muted">+ beneficio semanal exclusivo</p>
+          <p class="muted">+ jornadas con puntos potenciados</p>
+        </div>
 
-          <div class="streak" aria-hidden="true">
-            <div class="day on">L</div>
-            <div class="day on">M</div>
-            <div class="day on">X</div>
-            <div class="day">J</div>
-            <div class="day">V</div>
-            <div class="day">S</div>
-            <div class="day">D</div>
-          </div>
-
-          <div class="note">
-            <div class="note__ic">✅</div>
-            <div>
-              <div class="note__t"><strong>Cómo cuenta</strong></div>
-              <div class="muted small">Se considera racha cuando cargás al menos una vez por día.</div>
-            </div>
-          </div>
+        <div class="nivel leyenda">
+          <h3>Leyenda</h3>
+          <p>1000+ puntos</p>
+          <p><strong>+50% extra</strong></p>
+          <p class="muted">+ beneficio semanal premium</p>
+          <p class="muted">+ beneficio mensual especial</p>
+          <p class="muted">+ puntos potenciados en fechas seleccionadas</p>
+          <p class="muted">+ ventaja por permanencia en el nivel</p>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- VIP -->
-  <section class="section" id="vip">
-    <div class="container">
-      <div class="head reveal">
-        <h2>Beneficios VIP</h2>
-        <p class="muted">Diamante y Leyenda tienen ventajas exclusivas.</p>
-      </div>
+    <!-- CANJE (NEUTRO) -->
+    <section class="section">
+      <h2>Canje de puntos</h2>
+      <p class="muted">Podés canjear tus puntos por <strong>créditos de juego</strong>.</p>
 
-      <div class="grid3">
-        <div class="vipcard reveal">
-          <div class="vipcard__ic">🎁</div>
-          <div class="vipcard__t">Bonus sorpresa</div>
-          <div class="muted small">Recompensas especiales en momentos puntuales.</div>
-        </div>
+      <table class="tabla">
+        <tr>
+          <th>Puntos</th>
+          <th>Créditos</th>
+        </tr>
+        <tr><td>10</td><td>$1.500</td></tr>
+        <tr><td>25</td><td>$4.000</td></tr>
+        <tr><td>50</td><td>$10.000</td></tr>
+        <tr><td>100</td><td>$25.000</td></tr>
+      </table>
 
-        <div class="vipcard reveal">
-          <div class="vipcard__ic">⚡</div>
-          <div class="vipcard__t">Puntos x2 (días VIP)</div>
-          <div class="muted small">Jornadas especiales para sumar más rápido.</div>
-        </div>
+      <p class="muted"><strong>Importante:</strong> los créditos obtenidos por canje son <strong>no extraíbles</strong> y se usan únicamente para participar dentro de la plataforma.</p>
+    </section>
 
-        <div class="vipcard reveal">
-          <div class="vipcard__ic">🏆</div>
-          <div class="vipcard__t">Torneos privados</div>
-          <div class="muted small">Competencias exclusivas con mejores premios.</div>
-        </div>
-      </div>
-
-      <div class="final reveal">
-        <h3>¿Listo para subir de nivel?</h3>
-        <p class="muted">Sumá puntos, mantené tu racha y desbloqueá beneficios VIP.</p>
-        <div class="cta">
-          <a class="btn btn--primary" href="#niveles" data-scroll>Ver niveles</a>
-          <a class="btn btn--ghost" href="#constancia" data-scroll>Bonus de constancia</a>
-        </div>
-        <p class="muted small">Programa sujeto a cambios. Consultá soporte para más info.</p>
-      </div>
-    </div>
-  </section>
+  </main>
 
   <footer class="footer">
-    <div class="container footer__inner">
-      <div class="muted small">Programa sujeto a cambios. Consultá soporte para más info.</div>
-      <div class="footer__links">
-        <a href="#" aria-label="Términos">Términos</a>
-        <a href="#" aria-label="Soporte">Soporte</a>
-      </div>
-    </div>
+    <p>Programa sujeto a cambios. Consultá soporte para más info.</p>
   </footer>
 
+  <!-- Supabase + App -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>
 </html>
