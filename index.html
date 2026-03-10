@@ -11,114 +11,255 @@
 </head>
 
 <body>
-  <header class="header">
-    <h1>Programa de Recompensas</h1>
-    <p>Sumá puntos con cada carga y subí de categoría</p>
-  </header>
+  <!-- HERO -->
+  <header class="hero">
+    <div class="container hero__grid">
+      <div class="hero__text">
+        <div class="pill">✨ Programa VIP • Puntos • Beneficios</div>
+        <h1>Programa de <span class="grad">Recompensas</span></h1>
+        <p class="lead">
+          Sumá puntos con cada carga, subí de nivel y accedé a beneficios exclusivos.
+          Tus puntos se calculan sobre los <strong>últimos 30 días</strong>.
+        </p>
 
-  <main>
+        <div class="hero__highlights">
+          <div class="mini">
+            <div class="mini__ic">🪙</div>
+            <div>
+              <div class="mini__t">Regla</div>
+              <div class="mini__v">$1.000 = 1 punto</div>
+            </div>
+          </div>
+          <div class="mini">
+            <div class="mini__ic">⏳</div>
+            <div>
+              <div class="mini__t">Duración</div>
+              <div class="mini__v">Últimos 30 días</div>
+            </div>
+          </div>
+          <div class="mini">
+            <div class="mini__ic">👑</div>
+            <div>
+              <div class="mini__t">Objetivo</div>
+              <div class="mini__v">Subir de nivel</div>
+            </div>
+          </div>
+        </div>
 
-    <!-- ✅ MIS PUNTOS PRIMERO -->
-    <section class="section">
-      <h2>Mis puntos</h2>
-      <p>Ingresá tu usuario para ver tus puntos (últimos 30 días), tu nivel y el progreso.</p>
-
-      <div class="consulta">
-        <input id="userQuery" placeholder="Tu usuario (ej: dana)" />
-        <button id="btnBuscar" type="button">Ver</button>
+        <div class="hero__cta">
+          <a class="btn btn--primary" href="#mis-puntos">Ver mis puntos</a>
+          <a class="btn btn--ghost" href="#niveles">Ver niveles</a>
+        </div>
       </div>
 
-      <div id="resBox" class="resultado" style="display:none;">
-        <h3 id="resTitle"></h3>
-        <p id="resText"></p>
+      <div class="hero__card">
+        <div class="vipcard">
+          <div class="vipcard__top">
+            <div class="vipbadge">VIP</div>
+            <div class="muted">Progreso (demo)</div>
+          </div>
 
-        <div class="barra">
-          <div id="resProg" class="barra-fill" style="width:0%;"></div>
+          <div class="vipcard__row">
+            <span class="chip chip--silver">PLATA</span>
+            <span class="muted">→</span>
+            <span class="chip chip--gold">ORO</span>
+          </div>
+
+          <div class="bar">
+            <div class="bar__fill" style="width:68%"></div>
+          </div>
+          <div class="muted small">Te faltan <strong>35</strong> puntos para llegar a <strong>ORO</strong>.</div>
+
+          <div class="vipart" aria-hidden="true">
+            <div class="coin c1"></div>
+            <div class="coin c2"></div>
+            <div class="coin c3"></div>
+          </div>
+        </div>
+
+        <div class="glow g1"></div>
+        <div class="glow g2"></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- MIS PUNTOS -->
+    <section class="section section--focus" id="mis-puntos">
+      <div class="section__head">
+        <h2>Mis puntos</h2>
+        <p class="muted">Ingresá tu usuario para ver tus puntos, tu nivel y el progreso.</p>
+      </div>
+
+      <div class="query">
+        <input id="userQuery" placeholder="Tu usuario (ej: dana)" />
+        <button id="btnBuscar" type="button" class="btn btn--primary">Ver</button>
+      </div>
+
+      <div id="resBox" class="result" style="display:none;">
+        <div class="result__top">
+          <div>
+            <h3 id="resTitle" class="result__title"></h3>
+            <p id="resText" class="muted"></p>
+          </div>
+          <div class="tag">Últimos 30 días</div>
+        </div>
+
+        <div class="bar bar--big">
+          <div id="resProg" class="bar__fill" style="width:0%"></div>
         </div>
         <p id="resProgText" class="muted"></p>
 
+        <div class="divider"></div>
+
         <h4>Últimos movimientos</h4>
-        <ul id="movList"></ul>
+        <ul id="movList" class="list"></ul>
       </div>
     </section>
 
-    <!-- CÓMO FUNCIONA -->
+    <!-- COMO FUNCIONA -->
     <section class="section">
-      <h2>¿Cómo funcionan los puntos?</h2>
-      <p><strong>$1.000</strong> cargados = <strong>1 punto</strong></p>
-      <p class="muted">Los puntos se calculan sobre los <strong>últimos 30 días</strong> (ventana móvil).</p>
-    </section>
+      <div class="section__head">
+        <h2>¿Cómo funciona?</h2>
+        <p class="muted">Simple y transparente.</p>
+      </div>
 
-    <!-- ✅ NIVELES ACTUALIZADOS (manteniendo diseño) -->
-    <section class="section">
-      <h2>Programa de niveles</h2>
-      <p class="muted">Tu nivel se calcula con tus <strong>puntos de los últimos 30 días</strong>.</p>
-
-      <div class="niveles-grid">
-        <div class="nivel bronce">
-          <h3>Bronce</h3>
-          <p>0 a 49 puntos</p>
-          <p><strong>+5% extra</strong></p>
+      <div class="cards2">
+        <div class="card">
+          <h3>Regla de puntos</h3>
+          <p><strong>$1.000</strong> cargados = <strong>1 punto</strong></p>
+          <p class="muted small">Mientras más cargás, más rápido subís de nivel.</p>
         </div>
 
-        <div class="nivel plata">
-          <h3>Plata</h3>
-          <p>50 a 149 puntos</p>
-          <p><strong>+10% extra</strong></p>
-        </div>
-
-        <div class="nivel oro">
-          <h3>Oro</h3>
-          <p>150 a 399 puntos</p>
-          <p><strong>+20% extra</strong></p>
-        </div>
-
-        <div class="nivel diamante">
-          <h3>Diamante</h3>
-          <p>400 a 999 puntos</p>
-          <p><strong>+35% extra</strong></p>
-          <p class="muted">+ beneficio semanal exclusivo</p>
-          <p class="muted">+ jornadas con puntos potenciados</p>
-        </div>
-
-        <div class="nivel leyenda">
-          <h3>Leyenda</h3>
-          <p>1000+ puntos</p>
-          <p><strong>+50% extra</strong></p>
-          <p class="muted">+ beneficio semanal premium</p>
-          <p class="muted">+ beneficio mensual especial</p>
-          <p class="muted">+ puntos potenciados en fechas seleccionadas</p>
-          <p class="muted">+ ventaja por permanencia en el nivel</p>
+        <div class="card">
+          <h3>Ventana móvil</h3>
+          <p><strong>Se cuentan los últimos 30 días</strong></p>
+          <p class="muted small">Eso mantiene el ranking activo y premia la constancia.</p>
         </div>
       </div>
     </section>
 
-    <!-- ✅ CANJE con palabra neutra + no extraíbles -->
+    <!-- NIVELES -->
+    <section class="section" id="niveles">
+      <div class="section__head">
+        <h2>Programa de niveles</h2>
+        <p class="muted">Tu nivel depende de tus puntos (últimos 30 días).</p>
+      </div>
+
+      <div class="levels">
+        <div class="level level--bronze">
+          <div class="level__top">
+            <div class="level__ic">🥉</div>
+            <div>
+              <div class="level__name">Bronce</div>
+              <div class="muted small">0 a 49 puntos</div>
+            </div>
+            <div class="pct">+5%</div>
+          </div>
+        </div>
+
+        <div class="level level--silver">
+          <div class="level__top">
+            <div class="level__ic">🥈</div>
+            <div>
+              <div class="level__name">Plata</div>
+              <div class="muted small">50 a 149 puntos</div>
+            </div>
+            <div class="pct">+10%</div>
+          </div>
+        </div>
+
+        <div class="level level--gold">
+          <div class="level__top">
+            <div class="level__ic">🥇</div>
+            <div>
+              <div class="level__name">Oro</div>
+              <div class="muted small">150 a 399 puntos</div>
+            </div>
+            <div class="pct">+20%</div>
+          </div>
+        </div>
+
+        <div class="level level--diamond">
+          <div class="level__top">
+            <div class="level__ic">💎</div>
+            <div>
+              <div class="level__name">Diamante</div>
+              <div class="muted small">400 a 999 puntos</div>
+            </div>
+            <div class="pct">+35%</div>
+          </div>
+          <div class="level__extra muted small">
+            + beneficio semanal exclusivo • + jornadas con puntos potenciados
+          </div>
+        </div>
+
+        <div class="level level--legend">
+          <div class="ribbon">Más buscado</div>
+          <div class="level__top">
+            <div class="level__ic">👑</div>
+            <div>
+              <div class="level__name">Leyenda</div>
+              <div class="muted small">1000+ puntos</div>
+            </div>
+            <div class="pct">+50%</div>
+          </div>
+          <div class="level__extra muted small">
+            + beneficio semanal premium • + beneficio mensual especial • + puntos potenciados • + ventaja por permanencia
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CANJE -->
     <section class="section">
-      <h2>Canje de puntos</h2>
-      <p class="muted">Podés canjear tus puntos por <strong>Créditos</strong> de uso interno.</p>
+      <div class="section__head">
+        <h2>Canje de puntos</h2>
+        <p class="muted">Canjeá por <strong>Créditos</strong> de uso interno.</p>
+      </div>
 
-      <table class="tabla">
-        <tr>
-          <th>Puntos</th>
-          <th>Créditos</th>
-        </tr>
-        <tr><td>10</td><td>$1.500</td></tr>
-        <tr><td>25</td><td>$4.000</td></tr>
-        <tr><td>50</td><td>$10.000</td></tr>
-        <tr><td>100</td><td>$25.000</td></tr>
-      </table>
+      <div class="cards2">
+        <div class="card">
+          <h3>Tabla de canje</h3>
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr><th>Puntos</th><th>Créditos</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>10</td><td>$1.500</td></tr>
+                <tr><td>25</td><td>$4.000</td></tr>
+                <tr><td>50</td><td>$10.000</td></tr>
+                <tr><td>100</td><td>$25.000</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-      <p class="muted"><strong>Importante:</strong> los créditos obtenidos por canje son <strong>no extraíbles</strong> y se usan únicamente dentro de la plataforma.</p>
+        <div class="card">
+          <h3>Importante</h3>
+          <p class="muted">
+            Los créditos obtenidos por canje son <strong>no extraíbles</strong> y se usan únicamente dentro de la plataforma.
+          </p>
+          <div class="pillrow">
+            <span class="pill2">🔒 Uso interno</span>
+            <span class="pill2">⚡ Acreditación rápida</span>
+            <span class="pill2">🎁 Beneficio real</span>
+          </div>
+        </div>
+      </div>
     </section>
 
   </main>
 
   <footer class="footer">
-    <p>Programa sujeto a cambios. Consultá soporte para más info.</p>
+    <div class="container footer__inner">
+      <div class="muted small">Programa sujeto a cambios. Consultá soporte para más info.</div>
+      <div class="muted small">Cajeros: /cajero2.html</div>
+    </div>
   </footer>
 
-  <!-- Supabase + App -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>
