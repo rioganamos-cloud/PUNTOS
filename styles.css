@@ -398,7 +398,10 @@ tbody tr:hover td{ background: rgba(255,255,255,.03); }
   .cards2{ grid-template-columns: 1fr 1fr; }
   .levels{ grid-template-columns: 1fr 1fr; }
 }
-/* WhatsApp flotante */
+
+/* =========================
+   WhatsApp flotante (NUEVO)
+   ========================= */
 .wa-float{
   position: fixed;
   right: 18px;
