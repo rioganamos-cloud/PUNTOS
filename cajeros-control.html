@@ -24,6 +24,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
   min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
   background:radial-gradient(ellipse at 50% 0%, rgba(74,222,128,.08) 0%, transparent 60%);
 }
+#screen-login.hidden{display:none!important;}
 .login-box{
   background:var(--surface);border:1px solid var(--border2);border-radius:16px;
   padding:40px;width:100%;max-width:400px;
@@ -717,21 +718,42 @@ async function doLogin(){
 
 async function onLogin(session){
   _session=session;
-  const{data:perfil}=await SB.from('perfiles').select('*,cajeros(nombre)').eq('id',session.user.id).single();
+  const{data:perfil,error}=await SB.from('perfiles').select('*,cajeros(nombre)').eq('id',session.user.id).single();
+  if(error||!perfil){
+    // Si no hay perfil, cerrar sesión y mostrar error
+    await SB.auth.signOut();
+    const err=$('login-err');
+    err.textContent='No se encontró tu perfil. Contactá al administrador.';
+    err.classList.add('on');
+    $('l-btn').disabled=false; $('l-btn').textContent='Ingresar';
+    return;
+  }
   _perfil=perfil;
-  $('screen-login').style.display='none';
+
+  // Ocultar login, mostrar app
+  $('screen-login').classList.add('hidden');
   $('screen-app').classList.add('on');
-  $('h-nombre').textContent=perfil?.nombre||perfil?.cajeros?.nombre||session.user.email;
+  $('h-nombre').textContent=perfil?.cajeros?.nombre||perfil?.nombre||session.user.email;
+
   if(perfil?.rol==='admin'){
     $('h-badge').textContent='ADMIN'; $('h-badge').className='hbadge badge-admin';
     $('nav-admin').style.display='flex';
+    $('nav-cajero').style.display='none';
+    // Activar tab admin
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+    $('tab-a-dash').classList.add('on');
+    $('nav-admin').querySelector('button')?.classList.add('on');
     await lookup(); adminDash();
   } else {
     $('h-badge').textContent='CAJERO'; $('h-badge').className='hbadge badge-cajero';
     $('nav-cajero').style.display='flex';
-    // Activar tab inicio cajero
+    $('nav-admin').style.display='none';
+    // Activar tab cajero
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
     $('tab-c-inicio').classList.add('on');
+    $('nav-cajero').querySelector('button')?.classList.add('on');
     cajeroInicio();
   }
 }
@@ -740,11 +762,12 @@ async function doLogout(){
   await SB.auth.signOut();
   _session=null; _perfil=null;
   $('screen-app').classList.remove('on');
-  $('screen-login').style.display='flex';
+  $('screen-login').classList.remove('hidden');
   $('nav-admin').style.display='none';
   $('nav-cajero').style.display='none';
   $('l-email').value=''; $('l-pass').value='';
   $('l-btn').disabled=false; $('l-btn').textContent='Ingresar';
+  $('login-err').classList.remove('on');
 }
 
 // Escuchar cambios de sesión
