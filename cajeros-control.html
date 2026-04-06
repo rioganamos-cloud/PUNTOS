@@ -1,0 +1,1715 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control de Cajeros</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#0b0d12;--surface:#13161f;--surface2:#1a1f2e;--surface3:#222840;
+  --border:#28304a;--border2:#333d5c;
+  --green:#4ade80;--blue:#38bdf8;--orange:#fb923c;--red:#f87171;
+  --yellow:#fbbf24;--purple:#a78bfa;--pink:#f472b6;
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#4a5578;
+  --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;--r:8px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;font-size:14px;}
+
+/* LOGIN */
+#screen-login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(ellipse at 50% 0%,rgba(74,222,128,.08) 0%,transparent 60%);}
+#screen-login.hidden{display:none!important;}
+.login-box{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:40px;width:100%;max-width:400px;}
+.login-logo{font-family:var(--mono);font-size:20px;font-weight:600;color:var(--green);letter-spacing:3px;text-align:center;margin-bottom:6px;}
+.login-sub{text-align:center;color:var(--text3);font-size:11px;font-family:var(--mono);margin-bottom:32px;letter-spacing:1px;}
+.login-err{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:var(--red);border-radius:6px;padding:10px 13px;font-size:12px;margin-bottom:14px;display:none;}
+.login-err.on{display:block;}
+.login-btn{width:100%;background:var(--green);color:#061209;font-family:var(--sans);font-size:14px;font-weight:600;padding:12px;border:none;border-radius:7px;cursor:pointer;transition:all .15s;margin-top:4px;}
+.login-btn:hover{filter:brightness(1.1);}
+.login-btn:disabled{opacity:.5;cursor:not-allowed;}
+
+/* APP */
+#screen-app{display:none;min-height:100vh;flex-direction:column;}
+#screen-app.on{display:flex;}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:52px;position:sticky;top:0;z-index:200;flex-shrink:0;}
+.logo{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--green);letter-spacing:3px;}
+.logo em{color:var(--text3);font-style:normal;}
+.hright{display:flex;align-items:center;gap:12px;}
+.huser{font-size:11px;font-family:var(--mono);color:var(--text2);}
+.hbadge{font-size:9px;padding:2px 8px;border-radius:10px;font-family:var(--mono);font-weight:600;}
+.badge-admin{background:rgba(167,139,250,.15);color:var(--purple);}
+.badge-cajero{background:rgba(56,189,248,.15);color:var(--blue);}
+.logout-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text3);font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;font-family:var(--mono);}
+.logout-btn:hover{color:var(--red);border-color:var(--red);}
+nav{background:var(--surface);border-bottom:1px solid var(--border);display:flex;padding:0 20px;overflow-x:auto;flex-shrink:0;}
+nav button{background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:12px;font-weight:500;padding:12px 15px;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap;}
+nav button:hover{color:var(--text2);}
+nav button.on{color:var(--green);border-bottom-color:var(--green);}
+main{padding:20px;max-width:1280px;margin:0 auto;width:100%;}
+.tab{display:none;} .tab.on{display:block;}
+.section{margin-bottom:28px;}
+.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;}
+.st{font-family:var(--mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--text3);}
+
+/* CARDS */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px;margin-bottom:20px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;position:relative;overflow:hidden;}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.cg::before{background:var(--green);}.cb::before{background:var(--blue);}.co::before{background:var(--orange);}.cr::before{background:var(--red);}.cy::before{background:var(--yellow);}.cp::before{background:var(--purple);}
+.clabel{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);margin-bottom:5px;font-family:var(--mono);}
+.cval{font-size:22px;font-weight:600;font-family:var(--mono);}
+.vg{color:var(--green);}.vb{color:var(--blue);}.vo{color:var(--orange);}.vr{color:var(--red);}.vy{color:var(--yellow);}.vp{color:var(--purple);}
+
+/* BOTONES */
+.btn{background:var(--green);color:#061209;font-family:var(--sans);font-size:12px;font-weight:600;padding:7px 14px;border:none;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap;}
+.btn:hover{filter:brightness(1.1);transform:translateY(-1px);}
+.btn-s{background:var(--surface2);color:var(--text);border:1px solid var(--border);}
+.btn-r{background:var(--red);color:#120606;}
+.btn-b{background:var(--blue);color:#00111a;}
+.btn-y{background:var(--yellow);color:#120a00;}
+.sm{padding:4px 9px;font-size:11px;}
+
+/* FORMULARIOS */
+.fg{display:flex;flex-direction:column;gap:5px;}
+.fg label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);font-family:var(--mono);}
+.fg input,.fg select,.fg textarea{background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:13px;padding:8px 11px;border-radius:6px;outline:none;transition:border-color .2s;}
+.fg input:focus,.fg select:focus{border-color:var(--green);}
+.fg select option{background:var(--surface2);}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;}
+.hint{font-size:9px;color:var(--text3);font-family:var(--mono);margin-top:2px;}
+
+/* TABLA */
+.tw{overflow-x:auto;border-radius:var(--r);border:1px solid var(--border);}
+table{width:100%;border-collapse:collapse;}
+thead{background:var(--surface2);}
+th{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);padding:10px 13px;text-align:left;border-bottom:1px solid var(--border);}
+td{padding:10px 13px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text2);}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(255,255,255,.012);}
+.tm{font-family:var(--mono);}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:4px;font-size:9px;font-family:var(--mono);font-weight:600;letter-spacing:.5px;}
+.bg{background:rgba(74,222,128,.12);color:var(--green);}
+.bb{background:rgba(56,189,248,.12);color:var(--blue);}
+.bo{background:rgba(251,146,60,.12);color:var(--orange);}
+.br{background:rgba(248,113,113,.12);color:var(--red);}
+.by{background:rgba(251,191,36,.12);color:var(--yellow);}
+.bp{background:rgba(167,139,250,.12);color:var(--purple);}
+
+/* MODAL */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px;opacity:0;pointer-events:none;transition:opacity .2s;}
+.ov.on{opacity:1;pointer-events:all;}
+.modal{background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:24px;width:100%;max-width:640px;transform:scale(.96);transition:transform .2s;max-height:92vh;overflow-y:auto;}
+.ov.on .modal{transform:scale(1);}
+.mt{font-family:var(--mono);font-weight:600;font-size:14px;margin-bottom:18px;color:var(--green);}
+.ma{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap;}
+
+/* ALERTA */
+.alert{padding:9px 13px;border-radius:6px;font-size:12px;display:none;align-items:center;gap:7px;margin-bottom:12px;}
+.alert.on{display:flex;}
+.a-ok{background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);color:var(--green);}
+.a-err{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:var(--red);}
+
+/* PANEL ROW */
+.prow{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px;}
+.prow-title{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--blue);margin-bottom:10px;}
+.prev{margin-top:8px;font-family:var(--mono);font-size:10px;padding:5px 9px;border-radius:4px;display:none;}
+.prev-ok{background:rgba(74,222,128,.08);color:var(--green);}
+.prev-no{background:rgba(248,113,113,.08);color:var(--red);}
+
+/* CRUCE */
+.cruce-row{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:10px;flex-wrap:wrap;}
+.cc{flex:1;min-width:120px;padding:12px 14px;background:var(--surface2);}
+.cc+.cc{border-left:1px solid var(--border);}
+.ce{padding:12px 16px;min-width:130px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;}
+.ce.ok{background:rgba(74,222,128,.07);}
+.ce.tol{background:rgba(251,191,36,.07);}
+.ce.disc{background:rgba(248,113,113,.07);}
+.ce.pend{background:var(--surface2);}
+
+/* FILTROS */
+.filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+.filtros select,.filtros input{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:12px;}
+
+/* TURNO BADGE */
+.tbadge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:10px;font-family:var(--mono);font-weight:600;background:var(--surface3);color:var(--blue);}
+
+/* MISC */
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:sp .6s linear infinite;margin-right:6px;vertical-align:middle;}
+@keyframes sp{to{transform:rotate(360deg)}}
+.loading{text-align:center;padding:32px;color:var(--text3);font-family:var(--mono);font-size:11px;}
+.empty{text-align:center;padding:32px;color:var(--text3);font-family:var(--mono);font-size:11px;}
+.monto-p{color:var(--green);font-family:var(--mono);}
+.monto-n{color:var(--red);font-family:var(--mono);}
+.monto-z{color:var(--text2);font-family:var(--mono);}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;display:inline-block;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+.cfg-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:18px;max-width:460px;}
+
+/* ── CRONOGRAMA ── */
+.crono-grid{display:grid;border-radius:var(--r);overflow:hidden;border:1px solid var(--border);}
+.crono-header{background:var(--surface2);font-family:var(--mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3);padding:10px 8px;text-align:center;border-right:1px solid var(--border);}
+.crono-header:last-child{border-right:none;}
+.crono-turno-label{background:var(--surface2);font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text3);padding:8px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-right:1px solid var(--border);border-top:1px solid var(--border);}
+.crono-cell{padding:5px;border-right:1px solid var(--border);border-top:1px solid var(--border);min-height:68px;background:var(--bg);vertical-align:top;}
+.crono-cell:last-child{border-right:none;}
+.crono-cell.hoy{background:rgba(74,222,128,.04);}
+.crono-chip{display:block;border-radius:4px;padding:3px 6px;margin-bottom:3px;font-size:10px;font-weight:600;font-family:var(--mono);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.crono-empty{color:var(--text3);font-size:10px;font-family:var(--mono);text-align:center;padding:8px 0;}
+.crono-chip-legend{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:12px;font-size:11px;font-family:var(--mono);font-weight:600;}
+
+/* SALDO ROW */
+.saldo-row{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px;}
+.saldo-row-title{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--purple);margin-bottom:10px;}
+
+/* INTERVENCIÓN */
+.interv-row{background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r);padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+
+/* CAJERO WELCOME */
+.cajero-welcome{background:linear-gradient(135deg,rgba(56,189,248,.08),rgba(74,222,128,.06));border:1px solid var(--border2);border-radius:12px;padding:24px;margin-bottom:24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+.turno-actual{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 18px;display:inline-flex;align-items:center;gap:10px;margin-bottom:20px;}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="screen-login">
+  <div class="login-box">
+    <div class="login-logo">CAJEROS<span style="color:var(--text3)">.CTRL</span></div>
+    <div class="login-sub">SISTEMA DE CONTROL · v5</div>
+    <div class="login-err" id="login-err"></div>
+    <div class="fg" style="margin-bottom:14px"><label>Email</label><input type="email" id="l-email" placeholder="usuario@empresa.com"></div>
+    <div class="fg" style="margin-bottom:14px"><label>Contraseña</label><input type="password" id="l-pass" placeholder="••••••••"></div>
+    <button class="login-btn" id="l-btn" onclick="doLogin()">Ingresar</button>
+    <div style="text-align:center;margin-top:16px;font-size:10px;color:var(--text3);font-family:var(--mono);">Si no tenés acceso, contactá al administrador.</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="screen-app">
+  <header>
+    <div class="logo">CAJEROS<em>.CTRL</em> <span style="font-size:9px;background:var(--surface3);padding:2px 6px;border-radius:3px;color:var(--blue);margin-left:6px;">v5</span></div>
+    <div class="hright">
+      <span class="huser" id="h-nombre">—</span>
+      <span class="hbadge" id="h-badge">—</span>
+      <button class="logout-btn" onclick="doLogout()">Salir</button>
+    </div>
+  </header>
+
+  <!-- NAV ADMIN -->
+  <nav id="nav-admin" style="display:none">
+    <button class="on" onclick="tab('a-dash',this)">📊 Panel</button>
+    <button onclick="tab('a-cajeros',this)">👤 Cajeros</button>
+    <button onclick="tab('a-turnos',this)">🎯 Turnos</button>
+    <button onclick="tab('a-editar',this)">✏️ Editar cargas</button>
+    <button onclick="tab('a-billeteras',this)">👛 Billeteras</button>
+    <button onclick="tab('a-cruce',this)">🔀 Cruce</button>
+    <button onclick="tab('a-extracciones',this)">💸 Extracciones</button>
+    <button onclick="tab('a-operaciones',this)">⭐ Op. Especiales</button>
+    <button onclick="tab('a-cierre',this)">📅 Cierre</button>
+    <button onclick="tab('a-cronograma',this)">🗓️ Cronograma</button>
+    <button onclick="tab('a-config',this)">⚙️ Config</button>
+  </nav>
+
+  <!-- NAV CAJERO -->
+  <nav id="nav-cajero" style="display:none">
+    <button class="on" onclick="tab('c-inicio',this)">🏠 Inicio</button>
+    <button onclick="tab('c-turno',this)">🎯 Cargar turno</button>
+    <button onclick="tab('c-saldos',this)">👛 Saldos billetera</button>
+    <button onclick="tab('c-extracciones',this)">💸 Extracciones</button>
+    <button onclick="tab('c-operaciones',this)">⭐ Op. Especial</button>
+    <button onclick="tab('c-historial',this)">📋 Mi historial</button>
+  </nav>
+
+  <main>
+  <div id="alert-g" class="alert"></div>
+
+  <!-- ═══ ADMIN: DASHBOARD ═══ -->
+  <div id="tab-a-dash" class="tab on">
+    <div class="section">
+      <div class="sh"><div class="st">Resumen del día</div><button class="btn btn-s sm" onclick="adminDash()">↺</button></div>
+      <div class="cards" id="a-dash-cards"><div class="loading"><span class="spin"></span>Cargando...</div></div>
+    </div>
+    <div class="section">
+      <div class="st" style="margin-bottom:12px">Cruces hoy</div>
+      <div id="a-dash-cruces"><div class="loading"><span class="spin"></span></div></div>
+    </div>
+    <div class="section">
+      <div class="st" style="margin-bottom:12px">Últimas fichas cargadas</div>
+      <div class="tw"><table><thead><tr><th>Cajero</th><th>Turno</th><th>Panel</th><th>F.Ini</th><th>F.Fin</th><th>Bonif.</th><th>Resultado</th></tr></thead><tbody id="a-dash-tb"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ═══ ADMIN: CAJEROS ═══ -->
+  <div id="tab-a-cajeros" class="tab">
+    <div class="section">
+      <div class="sh">
+        <div class="st">Cajeros y paneles</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-s sm" onclick="openModal('m-panel')">+ Panel</button>
+          <button class="btn sm" onclick="openModal('m-nuevo-cajero')">+ Cajero</button>
+        </div>
+      </div>
+      <div class="tw" style="margin-bottom:18px;"><table><thead><tr><th>Cajero</th><th>Email</th><th>Estado</th><th>Acción</th></tr></thead><tbody id="a-tb-caj"></tbody></table></div>
+      <div class="st" style="margin-bottom:10px">Paneles</div>
+      <div class="tw"><table><thead><tr><th>Panel</th><th>Estado</th><th>Acción</th></tr></thead><tbody id="a-tb-pan"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ═══ ADMIN: TURNOS ═══ -->
+  <div id="tab-a-turnos" class="tab">
+    <div class="section">
+      <div class="sh"><div class="st">Todos los turnos</div></div>
+      <div class="filtros">
+        <select id="af-caj" onchange="adminTurnos()"><option value="">Todos los cajeros</option></select>
+        <select id="af-turno" onchange="adminTurnos()">
+          <option value="">Todos los turnos</option>
+          <option value="1">T1 · 00–06</option><option value="2">T2 · 06–12</option>
+          <option value="3">T3 · 12–18</option><option value="4">T4 · 18–00</option>
+        </select>
+        <input type="date" id="af-fecha" onchange="adminTurnos()">
+      </div>
+      <div class="tw"><table><thead><tr><th>Fecha</th><th>Cajero</th><th>Turno</th><th>Panel</th><th>H.Ini</th><th>H.Fin</th><th>F.Ini</th><th>F.Fin</th><th>Bonif.</th><th>Resultado</th></tr></thead><tbody id="a-tb-turnos"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ═══ ADMIN: EDITAR CARGAS ═══ -->
+  <div id="tab-a-editar" class="tab">
+    <div class="section">
+      <div class="sh"><div class="st">Editar cargas de cajeros</div></div>
+      <div class="filtros">
+        <select id="ee-caj" onchange="adminCargarEditar()"><option value="">Todos los cajeros</option></select>
+        <input type="date" id="ee-fecha" onchange="adminCargarEditar()">
+        <select id="ee-tipo" onchange="adminCargarEditar()">
+          <option value="fichas">Fichas por turno</option>
+          <option value="saldos">Saldos de billetera</option>
+        </select>
+      </div>
+      <div id="editar-tabla-cont"><div class="empty">Seleccioná filtros para ver las cargas</div></div>
+    </div>
+  </div>
+
+  <!-- ═══ ADMIN: BILLETERAS ═══ -->
+  <div id="tab-a-billeteras" class="tab">
+    <div class="section">
+      <div class="sh">
+        <div class="st">Billeteras</div>
+        <button class="btn sm" onclick="openModal('m-bill')">+ Nueva</button>
+      </div>
+      <div class="tw" style="margin-bottom:20px;"><table><thead><tr><th>Billetera</th><th>Saldo actual</th><th>Acciones</th></tr></thead><tbody id="a-tb-bill"></tbody></table></div>
+      <div class="st" style="margin-bottom:12px">Detalle por billetera</div>
+      <div class="filtros">
+        <select id="f-bill-sel" onchange="loadDetalleBill()"><option value="">Seleccioná billetera...</option></select>
+        <select id="f-bill-caj" onchange="loadDetalleBill()"><option value="">Todos los cajeros</option></select>
+        <select id="f-bill-turno" onchange="loadDetalleBill()">
+          <option value="">Todos los turnos</option>
+          <option value="1">T1</option><option value="2">T2</option><option value="3">T3</option><option value="4">T4</option>
+        </select>
+        <select id="f-bill-tipo" onchange="loadDetalleBill()">
+          <option value="">Todos los tipos</option>
+          <option value="saldo">Saldo turno</option>
+          <option value="extraccion">Extracción</option>
+          <option value="operacion">Op. especial</option>
+        </select>
+        <input type="date" id="f-bill-f1" onchange="loadDetalleBill()">
+        <input type="date" id="f-bill-f2" onchange="loadDetalleBill()">
+      </div>
+      <div id="bill-detalle"></div>
+    </div>
+  </div>
+
+  <!-- ═══ ADMIN: CRUCE ═══ -->
+  <div id="tab-a-cruce" class="tab">
+    <div class="section">
+      <div class="sh">
+        <div class="st">Cruce fichas ↔ billetera</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <input type="date" id="cruce-fecha" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:12px;">
+          <button class="btn btn-b sm" onclick="recalcularCruces()">⟳ Recalcular</button>
+          <button class="btn sm" onclick="loadCruce()">Ver</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+        <span class="badge bg">✔ OK — coincide exacto</span>
+        <span class="badge by">≈ Tolerancia — diferencia pequeña</span>
+        <span class="badge br">✖ Discrepancia — revisar</span>
+        <span class="badge" style="background:var(--surface2);color:var(--text3)">— Pendiente</span>
+      </div>
+      <div id="a-cruce-cont"><div class="loading"><span class="spin"></span>Cargando...</div></div>
+    </div>
+  </div>
+
+  <!-- ═══ ADMIN: EXTRACCIONES ═══ -->
+  <div id="tab-a-extracciones" class="tab">
+    <div class="section">
+      <div class="sh">
+        <div class="st">Extracciones</div>
+        <button class="btn sm" onclick="openModal('m-extraccion')">+ Nueva</button>
+      </div>
+      <div class="filtros">
+        <select id="ae-caj" onchange="adminExtracciones()"><option value="">Todos los cajeros</option></select>
+        <select id="ae-bill" onchange="adminExtracciones()"><option value="">Todas las billeteras</option></select>
+        <input type="date" id="ae-fecha" onchange="adminExtracciones()">
+      </div>
+      <div class="cards" id="ae-cards"></div>
+      <div class="tw"><table><thead><tr><th>Fecha</th><th>Cajero</th><th>Billetera</th><th>Monto</th><th>Motivo</th></tr></thead><tbody id="a-tb-ext"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ═══ ADMIN: OPERACIONES ESPECIALES ═══ -->
+  <div id="tab-a-operaciones" class="tab">
+    <div class="section">
+      <div class="sh">
+        <div class="st">Operaciones especiales</div>
+        <button class="btn sm" onclick="openModal('m-operacion')">+ Nueva</button>
+      </div>
+      <div class="tw"><table><thead><tr><th>Fecha</th><th>Cajero</th><th>Turno</th><th>Descripción</th><th>Total</th><th>Billeteras</th></tr></thead><tbody id="a-tb-op"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ═══ ADMIN: CRONOGRAMA ═══ -->
+  <div id="tab-a-cronograma" class="tab">
+    <div class="section">
+      <div class="sh">
+        <div class="st">Cronograma semanal de turnos</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-s sm" onclick="cronoSemanaAnterior()">← Anterior</button>
+          <span id="crono-titulo" style="font-family:var(--mono);font-size:12px;color:var(--text2);min-width:200px;text-align:center;"></span>
+          <button class="btn btn-s sm" onclick="cronoSemanaSiguiente()">Siguiente →</button>
+          <button class="btn sm" onclick="cronoHoy()">Hoy</button>
+        </div>
+      </div>
+      <!-- Leyenda cajeros -->
+      <div id="crono-leyenda" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;"></div>
+      <!-- Grilla -->
+      <div style="overflow-x:auto;">
+        <div id="crono-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ ADMIN: CIERRE ═══ -->
+  <div id="tab-a-cierre" class="tab">
+    <div class="section">
+      <div class="sh">
+        <div class="st">Cierre mensual</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="cierre-mes" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 11px;border-radius:6px;font-size:12px;"></select>
+          <button class="btn sm" onclick="generarCierre()">Generar</button>
+        </div>
+      </div>
+      <div id="cierre-res"></div>
+    </div>
+  </div>
+
+  <!-- ═══ ADMIN: CONFIG ═══ -->
+  <div id="tab-a-config" class="tab">
+    <div class="section">
+      <div class="st" style="margin-bottom:14px">Configuración</div>
+      <div class="cfg-box">
+        <div class="fg" style="margin-bottom:16px;">
+          <label>Tolerancia de cruce ($)</label>
+          <input type="number" id="cfg-tol" value="50" step="1" min="0">
+          <span class="hint">Diferencia máxima entre resultado de fichas y variación de billetera para marcar como "tolerancia".</span>
+        </div>
+        <button class="btn" onclick="guardarConfig()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CAJERO: INICIO ═══ -->
+  <div id="tab-c-inicio" class="tab on">
+    <div class="cajero-welcome">
+      <div style="width:52px;height:52px;border-radius:50%;background:var(--surface3);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">🎰</div>
+      <div>
+        <div style="font-size:20px;font-weight:600;margin-bottom:2px" id="c-nombre-bienvenida">—</div>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">CAJERO · SISTEMA DE CONTROL</div>
+      </div>
+    </div>
+    <div class="turno-actual">
+      <span class="dot"></span>
+      <span style="font-family:var(--mono);font-size:12px;color:var(--text2)">Turno actual:</span>
+      <span id="c-turno-actual" style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--blue)">—</span>
+    </div>
+    <div class="section">
+      <div class="st" style="margin-bottom:12px">Mi resumen de hoy</div>
+      <div class="cards" id="c-cards-hoy"><div class="loading"><span class="spin"></span></div></div>
+    </div>
+    <div class="section">
+      <div class="st" style="margin-bottom:12px">Mis últimos turnos</div>
+      <div class="tw"><table><thead><tr><th>Fecha</th><th>Turno</th><th>Panel</th><th>H.Ini</th><th>F.Ini</th><th>F.Fin</th><th>Bonif.</th></tr></thead><tbody id="c-tb-reciente"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ═══ CAJERO: CARGAR TURNO ═══ -->
+  <div id="tab-c-turno" class="tab">
+    <div class="section">
+      <div class="sh"><div class="st">Cargar turno de fichas</div></div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;max-width:820px;">
+        <div class="fgrid" style="margin-bottom:16px;">
+          <div class="fg"><label>Fecha</label><input type="date" id="ct-fecha"></div>
+          <div class="fg">
+            <label>Turno</label>
+            <select id="ct-turno-sel" onchange="actualizarTurnoBadge()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:13px;padding:8px 11px;border-radius:6px;outline:none;">
+              <option value="1">T1 · 00:00 – 06:00</option>
+              <option value="2">T2 · 06:01 – 12:00</option>
+              <option value="3">T3 · 12:01 – 18:00</option>
+              <option value="4">T4 · 18:01 – 00:00</option>
+            </select>
+          </div>
+        </div>
+        <div id="ct-paneles"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+          <button class="btn btn-s" onclick="addCajeroPanel()">+ Panel</button>
+          <button class="btn" onclick="cajeroGuardarTurno()">💾 Guardar turno</button>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="st" style="margin-bottom:12px">Mis turnos de hoy</div>
+      <div class="tw"><table><thead><tr><th>Turno</th><th>Panel</th><th>H.Ini</th><th>H.Fin</th><th>F.Ini</th><th>F.Fin</th><th>Bonif.</th></tr></thead><tbody id="ct-tb-hoy"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ═══ CAJERO: SALDOS BILLETERA ═══ -->
+  <div id="tab-c-saldos" class="tab">
+    <div class="section">
+      <div class="sh"><div class="st">Saldos de billetera por turno</div></div>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:16px;">Cargá el saldo inicial al comenzar tu turno y el saldo final al terminar. La variación se calcula sola.</p>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;max-width:700px;">
+        <div class="fgrid" style="margin-bottom:16px;">
+          <div class="fg"><label>Fecha</label><input type="date" id="cs-fecha"></div>
+          <div class="fg">
+            <label>Turno</label>
+            <select id="cs-turno">
+              <option value="1">T1 · 00:00–06:00</option><option value="2">T2 · 06:01–12:00</option>
+              <option value="3">T3 · 12:01–18:00</option><option value="4">T4 · 18:01–00:00</option>
+            </select>
+          </div>
+        </div>
+        <div id="cs-billeteras-cont"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+          <button class="btn btn-s" onclick="addSaldoRow()">+ Billetera</button>
+          <button class="btn" onclick="guardarSaldos()">💾 Guardar saldos</button>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="st" style="margin-bottom:12px">Mis saldos registrados</div>
+      <div class="tw"><table><thead><tr><th>Fecha</th><th>Turno</th><th>Billetera</th><th>Saldo ini.</th><th>Saldo fin.</th><th>Variación</th></tr></thead><tbody id="cs-tb"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ═══ CAJERO: EXTRACCIONES ═══ -->
+  <div id="tab-c-extracciones" class="tab">
+    <div class="section">
+      <div class="sh">
+        <div class="st">Mis extracciones</div>
+        <button class="btn sm" onclick="openModal('m-extraccion-cajero')">+ Registrar</button>
+      </div>
+      <div class="tw"><table><thead><tr><th>Fecha</th><th>Billetera</th><th>Monto</th><th>Motivo</th></tr></thead><tbody id="c-tb-ext"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ═══ CAJERO: OPERACIONES ESPECIALES ═══ -->
+  <div id="tab-c-operaciones" class="tab">
+    <div class="section">
+      <div class="sh">
+        <div class="st">Operaciones especiales</div>
+        <button class="btn sm" onclick="openModal('m-operacion-cajero')">+ Registrar</button>
+      </div>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:16px;">Registrá cuando se usaron varias billeteras para un mismo pago o evento.</p>
+      <div class="tw"><table><thead><tr><th>Fecha</th><th>Turno</th><th>Descripción</th><th>Total</th><th>Billeteras</th></tr></thead><tbody id="c-tb-op"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ═══ CAJERO: HISTORIAL ═══ -->
+  <div id="tab-c-historial" class="tab">
+    <div class="section">
+      <div class="sh"><div class="st">Mi historial completo</div></div>
+      <div class="filtros">
+        <select id="ch-turno" onchange="cajeroHistorial()"><option value="">Todos los turnos</option><option value="1">T1</option><option value="2">T2</option><option value="3">T3</option><option value="4">T4</option></select>
+        <input type="date" id="ch-f1" onchange="cajeroHistorial()">
+        <input type="date" id="ch-f2" onchange="cajeroHistorial()">
+      </div>
+      <div class="tw"><table><thead><tr><th>Fecha</th><th>Turno</th><th>Panel</th><th>H.Ini</th><th>F.Ini</th><th>F.Fin</th><th>Bonif.</th></tr></thead><tbody id="c-tb-hist"></tbody></table></div>
+    </div>
+  </div>
+
+  </main>
+</div>
+
+<!-- ═══ MODALES ═══ -->
+
+<!-- NUEVO CAJERO -->
+<div class="ov" id="m-nuevo-cajero"><div class="modal">
+  <div class="mt">Crear cajero y cuenta</div>
+  <div class="fgrid">
+    <div class="fg"><label>Nombre</label><input type="text" id="nc-nombre" placeholder="Ej: Lucía M."></div>
+    <div class="fg"><label>Email de acceso</label><input type="email" id="nc-email" placeholder="cajero@empresa.com"></div>
+    <div class="fg"><label>Contraseña</label><input type="password" id="nc-pass" placeholder="Mínimo 6 caracteres"></div>
+  </div>
+  <div class="ma"><button class="btn btn-s" onclick="closeModal('m-nuevo-cajero')">Cancelar</button><button class="btn" onclick="crearCajeroConCuenta()">Crear</button></div>
+</div></div>
+
+<!-- PANEL -->
+<div class="ov" id="m-panel"><div class="modal">
+  <div class="mt">Nuevo panel</div>
+  <div class="fg"><label>Nombre</label><input type="text" id="i-pnom" placeholder="Ej: Ganamos"></div>
+  <div class="ma"><button class="btn btn-s" onclick="closeModal('m-panel')">Cancelar</button><button class="btn" onclick="savePanel()">Guardar</button></div>
+</div></div>
+
+<!-- BILLETERA -->
+<div class="ov" id="m-bill"><div class="modal">
+  <div class="mt">Nueva billetera</div>
+  <div class="fgrid">
+    <div class="fg"><label>Nombre</label><input type="text" id="i-bnom" placeholder="Ej: MP Principal"></div>
+    <div class="fg"><label>Plataforma</label><input type="text" id="i-bplat" placeholder="Ej: MercadoPago"></div>
+    <div class="fg"><label>Saldo inicial ($)</label><input type="number" id="i-bsal" value="0" step="0.01"><span class="hint">El dinero que tiene la billetera hoy</span></div>
+  </div>
+  <div class="ma"><button class="btn btn-s" onclick="closeModal('m-bill')">Cancelar</button><button class="btn" onclick="saveBill()">Guardar</button></div>
+</div></div>
+
+<!-- AJUSTE DE SALDO (admin) -->
+<div class="ov" id="m-ajuste"><div class="modal">
+  <div class="mt">Ajustar saldo de billetera</div>
+  <p style="font-size:11px;color:var(--yellow);margin-bottom:16px;font-family:var(--mono)">Solo para corregir errores. El cambio queda registrado.</p>
+  <div id="ajuste-info" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px;font-family:var(--mono);font-size:13px;"></div>
+  <input type="hidden" id="ajuste-bill-id">
+  <div class="fgrid">
+    <div class="fg"><label>Saldo correcto ($)</label><input type="number" id="ajuste-nuevo" step="0.01" placeholder="0.00"></div>
+    <div class="fg" style="grid-column:1/-1"><label>Motivo del ajuste</label><input type="text" id="ajuste-motivo" placeholder="Ej: error de carga, corrección manual..."></div>
+  </div>
+  <div class="ma"><button class="btn btn-s" onclick="closeModal('m-ajuste')">Cancelar</button><button class="btn btn-y" onclick="guardarAjuste()">Guardar ajuste</button></div>
+</div></div>
+
+<!-- EDITAR TURNO PANEL (admin) -->
+<div class="ov" id="m-edit-turno"><div class="modal">
+  <div class="mt">✏️ Editar carga de fichas</div>
+  <input type="hidden" id="et-id">
+  <div class="fgrid">
+    <div class="fg"><label>Cajero</label><select id="et-caj"><option value="">Seleccioná...</option></select></div>
+    <div class="fg"><label>Fecha</label><input type="date" id="et-fecha"></div>
+    <div class="fg"><label>Panel</label><select id="et-panel"><option value="">Seleccioná...</option></select></div>
+    <div class="fg"><label>Turno</label>
+      <select id="et-turno">
+        <option value="1">T1 · 00:00–06:00</option><option value="2">T2 · 06:01–12:00</option>
+        <option value="3">T3 · 12:01–18:00</option><option value="4">T4 · 18:01–00:00</option>
+      </select>
+    </div>
+    <div class="fg"><label>Hora inicio</label><input type="time" id="et-hora-ini"></div>
+    <div class="fg"><label>Hora fin</label><input type="time" id="et-hora-fin"></div>
+    <div class="fg"><label>Fichas iniciales</label><input type="number" id="et-fi" step="0.01"></div>
+    <div class="fg"><label>Fichas finales</label><input type="number" id="et-ff" step="0.01"></div>
+    <div class="fg"><label>Bonificaciones</label><input type="number" id="et-bon" step="0.01"></div>
+  </div>
+  <div class="ma">
+    <button class="btn btn-r sm" onclick="eliminarCarga()">🗑 Eliminar</button>
+    <button class="btn btn-s" onclick="closeModal('m-edit-turno')">Cancelar</button>
+    <button class="btn" onclick="guardarEditTurno()">💾 Guardar cambios</button>
+  </div>
+</div></div>
+
+<!-- EDITAR SALDO BILLETERA (admin) -->
+<div class="ov" id="m-edit-saldo"><div class="modal">
+  <div class="mt">✏️ Editar saldo de billetera</div>
+  <input type="hidden" id="es-id">
+  <div class="fgrid">
+    <div class="fg"><label>Cajero</label><select id="es-caj"><option value="">Seleccioná...</option></select></div>
+    <div class="fg"><label>Fecha</label><input type="date" id="es-fecha"></div>
+    <div class="fg"><label>Billetera</label><select id="es-bill"><option value="">Seleccioná...</option></select></div>
+    <div class="fg"><label>Turno</label>
+      <select id="es-turno">
+        <option value="1">T1 · 00:00–06:00</option><option value="2">T2 · 06:01–12:00</option>
+        <option value="3">T3 · 12:01–18:00</option><option value="4">T4 · 18:01–00:00</option>
+      </select>
+    </div>
+    <div class="fg"><label>Saldo inicial</label><input type="number" id="es-si" step="0.01"></div>
+    <div class="fg"><label>Saldo final</label><input type="number" id="es-sf" step="0.01"></div>
+  </div>
+  <div class="ma">
+    <button class="btn btn-r sm" onclick="eliminarSaldo()">🗑 Eliminar</button>
+    <button class="btn btn-s" onclick="closeModal('m-edit-saldo')">Cancelar</button>
+    <button class="btn" onclick="guardarEditSaldo()">💾 Guardar cambios</button>
+  </div>
+</div></div>
+
+<!-- EXTRACCIÓN (admin) -->
+<div class="ov" id="m-extraccion"><div class="modal">
+  <div class="mt">Registrar extracción</div>
+  <p style="font-size:11px;color:var(--red);margin-bottom:14px;font-family:var(--mono)">⚠ Siempre negativa para la billetera. Separada del turno.</p>
+  <div class="fgrid">
+    <div class="fg"><label>Cajero</label><select id="ie-caj"><option value="">Seleccioná...</option></select></div>
+    <div class="fg"><label>Billetera</label><select id="ie-bill"><option value="">Sin billetera</option></select></div>
+    <div class="fg"><label>Fecha</label><input type="date" id="ie-fecha"></div>
+    <div class="fg"><label>Monto</label><input type="number" id="ie-monto" placeholder="0.00" step="0.01"></div>
+    <div class="fg" style="grid-column:1/-1"><label>Motivo</label><input type="text" id="ie-motivo" placeholder="Ej: sueldos, extracción Dana..."></div>
+  </div>
+  <div class="ma"><button class="btn btn-s" onclick="closeModal('m-extraccion')">Cancelar</button><button class="btn btn-r" onclick="saveExtraccion(false)">Registrar</button></div>
+</div></div>
+
+<!-- EXTRACCIÓN (cajero) -->
+<div class="ov" id="m-extraccion-cajero"><div class="modal">
+  <div class="mt">Registrar extracción</div>
+  <div class="fgrid">
+    <div class="fg"><label>Billetera</label><select id="ce-bill"><option value="">Sin billetera</option></select></div>
+    <div class="fg"><label>Fecha</label><input type="date" id="ce-fecha"></div>
+    <div class="fg"><label>Monto</label><input type="number" id="ce-monto" placeholder="0.00" step="0.01"></div>
+    <div class="fg" style="grid-column:1/-1"><label>Motivo</label><input type="text" id="ce-motivo" placeholder="Ej: sueldos, extracción Dana..."></div>
+  </div>
+  <div class="ma"><button class="btn btn-s" onclick="closeModal('m-extraccion-cajero')">Cancelar</button><button class="btn btn-r" onclick="saveExtraccion(true)">Registrar</button></div>
+</div></div>
+
+<!-- OPERACIÓN ESPECIAL (admin y cajero comparten lógica) -->
+<div class="ov" id="m-operacion"><div class="modal">
+  <div class="mt">Nueva operación especial</div>
+  <p style="font-size:11px;color:var(--text2);margin-bottom:14px;font-family:var(--mono)">Usá esto cuando varias billeteras participan en un mismo evento.</p>
+  <div class="fgrid" style="margin-bottom:14px;">
+    <div class="fg"><label>Cajero</label><select id="io-caj"><option value="">Seleccioná...</option></select></div>
+    <div class="fg"><label>Fecha</label><input type="date" id="io-fecha"></div>
+    <div class="fg"><label>Turno</label>
+      <select id="io-turno"><option value="1">T1</option><option value="2">T2</option><option value="3">T3</option><option value="4">T4</option></select>
+    </div>
+    <div class="fg" style="grid-column:1/-1"><label>Descripción</label><input type="text" id="io-desc" placeholder="Ej: Pago premio grande jugador VIP"></div>
+  </div>
+  <div class="st" style="margin-bottom:10px;font-size:10px">Billeteras participantes</div>
+  <div id="io-bills-cont"></div>
+  <button class="btn btn-s sm" onclick="addOpBill('io-bills-cont')" style="margin-bottom:14px">+ Billetera</button>
+  <div class="ma"><button class="btn btn-s" onclick="closeModal('m-operacion')">Cancelar</button><button class="btn" onclick="saveOperacion(false)">Guardar</button></div>
+</div></div>
+
+<!-- OPERACIÓN ESPECIAL (cajero) -->
+<div class="ov" id="m-operacion-cajero"><div class="modal">
+  <div class="mt">Nueva operación especial</div>
+  <p style="font-size:11px;color:var(--text2);margin-bottom:14px;font-family:var(--mono)">Usá esto cuando varias billeteras participan en un mismo evento.</p>
+  <div class="fgrid" style="margin-bottom:14px;">
+    <div class="fg"><label>Fecha</label><input type="date" id="co-fecha"></div>
+    <div class="fg"><label>Turno</label>
+      <select id="co-turno"><option value="1">T1</option><option value="2">T2</option><option value="3">T3</option><option value="4">T4</option></select>
+    </div>
+    <div class="fg" style="grid-column:1/-1"><label>Descripción</label><input type="text" id="co-desc" placeholder="Ej: Pago premio grande jugador VIP"></div>
+  </div>
+  <div class="st" style="margin-bottom:10px;font-size:10px">Billeteras participantes</div>
+  <div id="co-bills-cont"></div>
+  <button class="btn btn-s sm" onclick="addOpBill('co-bills-cont')" style="margin-bottom:14px">+ Billetera</button>
+  <div class="ma"><button class="btn btn-s" onclick="closeModal('m-operacion-cajero')">Cancelar</button><button class="btn" onclick="saveOperacion(true)">Guardar</button></div>
+</div></div>
+
+<script>
+const SB=supabase.createClient(
+  'https://grtmfhlcsfmvzmtrxugg.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdydG1maGxjc2ZtdnptdHJ4dWdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NTg2MzgsImV4cCI6MjA5MDAzNDYzOH0.BInOLC0LRPGNRF4QqrExDwRbbJQZOHNtg3pFnq-hXdU'
+);
+
+let _session=null,_perfil=null,_caj=[],_bill=[],_pan=[],_pidx=0,_prows=[],_sidx=0,_srows=[];
+
+const $=id=>document.getElementById(id);
+const hoy=()=>new Date().toISOString().slice(0,10);
+const fmt=n=>Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:2});
+const resBil=(fi,ff)=>Number(fi)-Number(ff);
+function fmtRes(v){
+  if(v>0)return`<span class="monto-p">+$${fmt(v)}</span>`;
+  if(v<0)return`<span class="monto-n">-$${fmt(Math.abs(v))}</span>`;
+  return`<span class="monto-z">$0.00</span>`;
+}
+function alerta(msg,t='ok'){const e=$('alert-g');e.textContent=msg;e.className=`alert a-${t} on`;setTimeout(()=>e.className='alert',3500);}
+function openModal(id){$(id).classList.add('on');}
+function closeModal(id){$(id).classList.remove('on');}
+const TURNOS={1:'T1 · 00–06',2:'T2 · 06–12',3:'T3 · 12–18',4:'T4 · 18–00'};
+const TURNOS_FULL={1:'Turno 1 · 00:00–06:00',2:'Turno 2 · 06:01–12:00',3:'Turno 3 · 12:01–18:00',4:'Turno 4 · 18:01–00:00'};
+function turnoDesdeHora(h){if(!h)return null;const[hh,mm]=(h+'').split(':').map(Number);const t=hh*60+(mm||0);if(t<=360)return 1;if(t<=720)return 2;if(t<=1080)return 3;return 4;}
+function turnoActual(){return turnoDesdeHora(new Date().toTimeString().slice(0,5));}
+function tbadge(n){const cls=['','bb','bg','bo','bp'][n]||'bb';return`<span class="tbadge ${cls}">${TURNOS[n]||'—'}</span>`;}
+function fillSel(id,items,lbl,val,ph='Todos'){const el=$(id);if(!el)return;const cur=el.value;el.innerHTML=`<option value="">${ph}</option>`+items.map(i=>`<option value="${val(i)}">${lbl(i)}</option>`).join('');if(cur)el.value=cur;}
+
+function tab(name,btn){
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+  $('tab-'+name)?.classList.add('on'); btn?.classList.add('on');
+  const fn={
+    'a-dash':adminDash,'a-cajeros':adminCajeros,'a-turnos':adminTurnos,
+    'a-editar':adminCargarEditar,'a-billeteras':adminBilleteras,'a-cruce':initCruce,
+    'a-extracciones':adminExtracciones,'a-operaciones':adminOperaciones,
+    'a-cierre':initCierre,'a-cronograma':initCronograma,'a-config':initConfig,
+    'c-inicio':cajeroInicio,'c-turno':cajeroInitTurno,
+    'c-saldos':cajeroInitSaldos,'c-extracciones':cajeroLoadExt,
+    'c-operaciones':cajeroLoadOp,'c-historial':cajeroHistorial,
+  };
+  fn[name]?.();
+}
+
+// ── LOOKUP ──
+async function lookup(){
+  const[a,b,c]=await Promise.all([
+    SB.from('cajeros').select('*').eq('activo',true).order('nombre'),
+    SB.from('billeteras').select('*').order('nombre'),
+    SB.from('paneles').select('*').eq('activo',true).order('nombre'),
+  ]);
+  _caj=a.data||[]; _bill=b.data||[]; _pan=c.data||[];
+}
+
+// ── AUTH ──
+async function doLogin(){
+  const email=$('l-email').value.trim(),pass=$('l-pass').value;
+  const btn=$('l-btn'),err=$('login-err');
+  if(!email||!pass){err.textContent='Completá email y contraseña.';err.classList.add('on');return;}
+  btn.disabled=true;btn.textContent='Ingresando...';
+  const{data,error}=await SB.auth.signInWithPassword({email,password:pass});
+  if(error){err.textContent=error.message==='Invalid login credentials'?'Email o contraseña incorrectos.':error.message;err.classList.add('on');btn.disabled=false;btn.textContent='Ingresar';return;}
+  err.classList.remove('on');
+  await onLogin(data.session);
+}
+
+async function onLogin(session){
+  _session=session;
+  const{data:perfil,error}=await SB.from('perfiles').select('*,cajeros(nombre)').eq('id',session.user.id).single();
+  if(error||!perfil){
+    await SB.auth.signOut();
+    const err=$('login-err');err.textContent='No se encontró tu perfil. Contactá al administrador.';err.classList.add('on');
+    $('l-btn').disabled=false;$('l-btn').textContent='Ingresar';return;
+  }
+  _perfil=perfil;
+  $('screen-login').classList.add('hidden');
+  $('screen-app').classList.add('on');
+  $('h-nombre').textContent=perfil?.cajeros?.nombre||perfil?.nombre||session.user.email;
+  if(perfil?.rol==='admin'){
+    $('h-badge').textContent='ADMIN';$('h-badge').className='hbadge badge-admin';
+    $('nav-admin').style.display='flex';$('nav-cajero').style.display='none';
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+    $('tab-a-dash').classList.add('on');$('nav-admin').querySelector('button')?.classList.add('on');
+    await lookup(); adminDash();
+  } else {
+    $('h-badge').textContent='CAJERO';$('h-badge').className='hbadge badge-cajero';
+    $('nav-cajero').style.display='flex';$('nav-admin').style.display='none';
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+    $('tab-c-inicio').classList.add('on');$('nav-cajero').querySelector('button')?.classList.add('on');
+    cajeroInicio();
+  }
+}
+
+async function doLogout(){
+  await SB.auth.signOut();_session=null;_perfil=null;
+  $('screen-app').classList.remove('on');$('screen-login').classList.remove('hidden');
+  $('nav-admin').style.display='none';$('nav-cajero').style.display='none';
+  $('l-email').value='';$('l-pass').value='';$('l-btn').disabled=false;$('l-btn').textContent='Ingresar';
+  $('login-err').classList.remove('on');
+}
+
+SB.auth.onAuthStateChange(async(event,session)=>{
+  if(session&&!_session)await onLogin(session);
+  else if(!session&&_session)doLogout();
+});
+
+// ── CRUCE HTML ──
+function cruceHTML(c){
+  const E={
+    ok:{cls:'ok',ic:'✔',lb:'OK',color:'var(--green)'},
+    tolerancia:{cls:'tol',ic:'≈',lb:'Tolerancia',color:'var(--yellow)'},
+    discrepancia:{cls:'disc',ic:'✖',lb:'Discrepancia',color:'var(--red)'},
+    pendiente:{cls:'pend',ic:'—',lb:'Pendiente',color:'var(--text3)'},
+  };
+  const e=E[c.estado]||E.pendiente;
+  const esperado=c.monto_esperado??c.resultado_fichas??0;
+  const real=c.monto_real??c.variacion_billetera??c.total_caja??0;
+  const dif=Math.abs(esperado-real);
+  return `<div class="cruce-row">
+    <div class="cc"><div style="font-size:9px;color:var(--text3);font-family:var(--mono);margin-bottom:3px">CAJERO</div>
+      <div style="font-weight:600">${c.cajeros?.nombre||'—'}</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:2px">${TURNOS_FULL[c.numero_turno]||''} · ${c.fecha||''}</div>
+    </div>
+    <div class="cc"><div style="font-size:9px;color:var(--text3);font-family:var(--mono);margin-bottom:3px">ESPERADO (fichas)</div>
+      <div style="font-size:18px;font-weight:600;font-family:var(--mono);color:${esperado>=0?'var(--green)':'var(--red)'}">${esperado>=0?'+':''}$${fmt(esperado)}</div>
+    </div>
+    <div class="cc"><div style="font-size:9px;color:var(--text3);font-family:var(--mono);margin-bottom:3px">REAL (billetera)</div>
+      <div style="font-size:18px;font-weight:600;font-family:var(--mono);color:${real>=0?'var(--green)':'var(--red)'}">${real>=0?'+':''}$${fmt(real)}</div>
+    </div>
+    <div class="cc"><div style="font-size:9px;color:var(--text3);font-family:var(--mono);margin-bottom:3px">DIFERENCIA</div>
+      <div style="font-size:16px;font-weight:600;font-family:var(--mono);color:${dif===0?'var(--green)':dif<=50?'var(--yellow)':'var(--red)'}">$${fmt(dif)}</div>
+    </div>
+    <div class="ce ${e.cls}">
+      <div style="font-size:20px">${e.ic}</div>
+      <div style="font-family:var(--mono);font-weight:600;font-size:11px;color:${e.color}">${e.lb}</div>
+    </div>
+  </div>`;
+}
+
+// ══ ADMIN ══
+async function adminDash(){
+  const d=hoy();
+  const{data:tp}=await SB.from('turno_panel').select('*,turnos!inner(cajero_id,fecha,numero_turno,cajeros(nombre)),paneles(nombre)').order('created_at',{ascending:false}).limit(80);
+  const rows=(tp||[]).filter(r=>r.turnos?.fecha===d);
+  const{data:cr}=await SB.from('cruce_turno').select('*,cajeros(nombre)').eq('fecha',d);
+  const{data:ext}=await SB.from('extracciones_v2').select('*').eq('fecha',d);
+  const sumRes=rows.reduce((a,r)=>a+resBil(r.fichas_iniciales,r.fichas_finales),0);
+  const sumBon=rows.reduce((a,r)=>a+Number(r.bonificaciones),0);
+  const sumExt=(ext||[]).reduce((a,e)=>a+Number(e.monto),0);
+  const ok=(cr||[]).filter(x=>x.estado==='ok').length;
+  const disc=(cr||[]).filter(x=>x.estado==='discrepancia').length;
+  $('a-dash-cards').innerHTML=`
+    <div class="card cg"><div class="clabel">Resultado fichas</div><div class="cval ${sumRes>=0?'vg':'vr'}">${sumRes>=0?'+':''}$${fmt(sumRes)}</div></div>
+    <div class="card co"><div class="clabel">Bonificaciones</div><div class="cval vo">$${fmt(sumBon)}</div></div>
+    <div class="card cr"><div class="clabel">Extracciones hoy</div><div class="cval vr">-$${fmt(sumExt)}</div></div>
+    <div class="card cg"><div class="clabel">Cruces OK</div><div class="cval vg">${ok}</div></div>
+    <div class="card cr"><div class="clabel">Discrepancias</div><div class="cval vr">${disc}</div></div>
+    <div class="card cp"><div class="clabel">Cajeros activos</div><div class="cval vp">${_caj.length}</div></div>
+  `;
+  $('a-dash-cruces').innerHTML=(cr||[]).length?(cr||[]).map(cruceHTML).join(''):`<div class="empty">Sin cruces para hoy. Cargá saldos de billetera y usá "Recalcular" en la pestaña Cruce.</div>`;
+  const tb=$('a-dash-tb');
+  if(!rows.length){tb.innerHTML=`<tr><td colspan="7"><div class="empty">Sin fichas hoy</div></td></tr>`;return;}
+  tb.innerHTML=rows.slice(0,15).map(r=>{const res=resBil(r.fichas_iniciales,r.fichas_finales);return`<tr>
+    <td style="font-weight:500">${r.turnos?.cajeros?.nombre||'—'}</td><td>${tbadge(r.turnos?.numero_turno)}</td>
+    <td><span class="badge bb">${r.paneles?.nombre||'—'}</span></td>
+    <td class="tm">${fmt(r.fichas_iniciales)}</td><td class="tm">${fmt(r.fichas_finales)}</td>
+    <td class="tm" style="color:var(--orange)">$${fmt(r.bonificaciones)}</td><td>${fmtRes(res)}</td>
+  </tr>`;}).join('');
+}
+
+async function adminCajeros(){
+  await lookup();
+  const{data:perfs}=await SB.from('perfiles').select('*').eq('rol','cajero');
+  const tb=$('a-tb-caj');
+  if(!_caj.length)tb.innerHTML=`<tr><td colspan="4"><div class="empty">Sin cajeros</div></td></tr>`;
+  else tb.innerHTML=_caj.map(c=>{const p=perfs?.find(x=>x.cajero_id===c.id);return`<tr>
+    <td style="font-weight:500">${c.nombre}</td>
+    <td class="tm" style="font-size:11px;color:var(--text3)">${p?.nombre||'Sin email'}</td>
+    <td><span class="badge bg">Activo</span></td>
+    <td><button class="btn btn-r sm" onclick="desactivarCajero('${c.id}')">Desactivar</button></td>
+  </tr>`;}).join('');
+  const tp=$('a-tb-pan');
+  if(!_pan.length)tp.innerHTML=`<tr><td colspan="3"><div class="empty">Sin paneles</div></td></tr>`;
+  else tp.innerHTML=_pan.map(p=>`<tr><td style="font-weight:500">${p.nombre}</td><td><span class="badge bb">Activo</span></td><td><button class="btn btn-r sm" onclick="delPanel('${p.id}')">Eliminar</button></td></tr>`).join('');
+}
+
+async function crearCajeroConCuenta(){
+  const nombre=$('nc-nombre').value.trim(),email=$('nc-email').value.trim(),pass=$('nc-pass').value;
+  if(!nombre||!email||!pass){alerta('Completá todos los campos','err');return;}
+  if(pass.length<6){alerta('Contraseña mínimo 6 caracteres','err');return;}
+  const{data:caj,error:ce}=await SB.from('cajeros').insert({nombre}).select().single();
+  if(ce){alerta('Error: '+ce.message,'err');return;}
+  const{data:s2,error:e2}=await SB.auth.signUp({email,password:pass,options:{data:{nombre}}});
+  const userId=s2?.user?.id;
+  if(e2||!userId){alerta('Error al crear usuario: '+(e2?.message||'intentá de nuevo'),'err');return;}
+  const{error:pe}=await SB.from('perfiles').insert({id:userId,cajero_id:caj.id,rol:'cajero',nombre:email});
+  if(pe){alerta('Cajero creado pero error en perfil: '+pe.message,'err');return;}
+  closeModal('m-nuevo-cajero');$('nc-nombre').value='';$('nc-email').value='';$('nc-pass').value='';
+  alerta('✓ Cajero creado');await lookup();adminCajeros();
+}
+async function desactivarCajero(id){if(!confirm('¿Desactivar?'))return;await SB.from('cajeros').update({activo:false}).eq('id',id);alerta('Desactivado');await lookup();adminCajeros();}
+async function savePanel(){const n=$('i-pnom').value.trim();if(!n){alerta('Ingresá nombre','err');return;}const{error}=await SB.from('paneles').insert({nombre:n});if(error){alerta('Error: '+error.message,'err');return;}closeModal('m-panel');alerta('Panel creado ✓');await lookup();adminCajeros();}
+async function delPanel(id){if(!confirm('¿Eliminar?'))return;await SB.from('paneles').update({activo:false}).eq('id',id);alerta('Eliminado');await lookup();adminCajeros();}
+
+async function adminTurnos(){
+  fillSel('af-caj',_caj,c=>c.nombre,c=>c.id,'Todos los cajeros');
+  const cajId=$('af-caj')?.value,turno=$('af-turno')?.value,fecha=$('af-fecha')?.value;
+  const{data}=await SB.from('turno_panel').select('*,turnos!inner(cajero_id,fecha,numero_turno,cajeros(nombre)),paneles(nombre)').order('created_at',{ascending:false}).limit(200);
+  let rows=data||[];
+  if(cajId)rows=rows.filter(r=>r.turnos?.cajero_id===cajId);
+  if(turno)rows=rows.filter(r=>String(r.turnos?.numero_turno)===turno);
+  if(fecha)rows=rows.filter(r=>r.turnos?.fecha===fecha);
+  const tb=$('a-tb-turnos');
+  if(!rows.length){tb.innerHTML=`<tr><td colspan="10"><div class="empty">Sin datos</div></td></tr>`;return;}
+  tb.innerHTML=rows.map(r=>{const res=resBil(r.fichas_iniciales,r.fichas_finales);return`<tr>
+    <td class="tm" style="font-size:11px">${r.turnos?.fecha||'—'}</td><td style="font-weight:500">${r.turnos?.cajeros?.nombre||'—'}</td>
+    <td>${tbadge(r.turnos?.numero_turno)}</td><td><span class="badge bb">${r.paneles?.nombre||'—'}</span></td>
+    <td class="tm">${r.hora_inicio||'—'}</td><td class="tm">${r.hora_fin||'—'}</td>
+    <td class="tm">${fmt(r.fichas_iniciales)}</td><td class="tm">${fmt(r.fichas_finales)}</td>
+    <td class="tm" style="color:var(--orange)">$${fmt(r.bonificaciones)}</td><td>${fmtRes(res)}</td>
+  </tr>`;}).join('');
+}
+
+async function adminBilleteras(){
+  // Recalcular saldos automáticamente al entrar
+  await SB.rpc('recalcular_todos_saldos');
+  // Recargar billeteras con saldos actualizados
+  const{data:bills}=await SB.from('billeteras').select('*').order('nombre');
+  _bill=bills||[];
+
+  // Obtener último saldo final cargado por cada billetera
+  const{data:ultSaldos}=await SB.from('saldos_billetera')
+    .select('billetera_id,saldo_final,fecha,numero_turno,cajeros(nombre)')
+    .not('saldo_final','is',null)
+    .order('fecha',{ascending:false})
+    .order('created_at',{ascending:false});
+
+  // Mapa: billetera_id → último registro
+  const mapaUlt={};
+  (ultSaldos||[]).forEach(s=>{
+    if(!mapaUlt[s.billetera_id]) mapaUlt[s.billetera_id]=s;
+  });
+
+  const tb=$('a-tb-bill');
+  if(!_bill.length)tb.innerHTML=`<tr><td colspan="5"><div class="empty">Sin billeteras. Creá una con "+ Nueva".</div></td></tr>`;
+  else tb.innerHTML=_bill.map(b=>{
+    const saldo=Number(b.saldo_actual||0);
+    const color=saldo>0?'var(--green)':saldo<0?'var(--red)":'var(--text2)';
+    const signo=saldo>0?'+':'';
+    const ult=mapaUlt[b.id];
+    const ultInfo=ult
+      ? `<span style="font-size:9px;color:var(--text3);font-family:var(--mono);display:block;margin-top:2px">Último: ${ult.fecha} T${ult.numero_turno} · ${ult.cajeros?.nombre||'—'}</span>`
+      : `<span style="font-size:9px;color:var(--text3);font-family:var(--mono);display:block;margin-top:2px">Sin saldos cargados aún</span>`;
+    return`<tr>
+      <td style="font-weight:500">${b.nombre}<br><span style="font-size:10px;color:var(--text3)">${b.plataforma||'—'}</span></td>
+      <td>
+        <span style="font-family:var(--mono);font-weight:700;font-size:16px;color:${color}">${signo}$${fmt(saldo)}</span>
+        ${ultInfo}
+      </td>
+      <td>
+        <button class="btn btn-s sm" onclick="loadDetalleBill('${b.id}')">Ver detalle</button>
+        <button class="btn btn-y sm" onclick="abrirAjuste('${b.id}','${b.nombre}',${saldo})">Ajustar saldo</button>
+        <button class="btn btn-r sm" onclick="delBill('${b.id}')">Eliminar</button>
+      </td>
+    </tr>`;
+  }).join('');
+  fillSel('f-bill-sel',_bill,b=>b.nombre,b=>b.id,'Seleccioná billetera...');
+  fillSel('f-bill-caj',_caj,c=>c.nombre,c=>c.id,'Todos los cajeros');
+}
+
+async function saveBill(){
+  const nombre=$('i-bnom').value.trim();if(!nombre){alerta('Ingresá nombre','err');return;}
+  const saldo_inicial=parseFloat($('i-bsal')?.value)||0;
+  const{error}=await SB.from('billeteras').insert({nombre,plataforma:$('i-bplat').value.trim(),saldo_inicial,saldo_actual:saldo_inicial});
+  if(error){alerta('Error: '+error.message,'err');return;}
+  $('i-bnom').value='';$('i-bplat').value='';$('i-bsal').value='0';
+  closeModal('m-bill');alerta('✓ Billetera creada');await lookup();adminBilleteras();
+}
+
+function abrirAjuste(billId, nombre, saldoActual){
+  $('ajuste-bill-id').value=billId;
+  $('ajuste-nuevo').value=saldoActual;
+  $('ajuste-motivo').value='';
+  $('ajuste-info').innerHTML=`<span style="color:var(--text2)">Billetera:</span> <b>${nombre}</b><br><span style="color:var(--text2)">Saldo actual:</span> <b style="color:${Number(saldoActual)>=0?'var(--green)':' var(--red)'}">${Number(saldoActual)>=0?'+':''} $${fmt(saldoActual)}</b>`;
+  openModal('m-ajuste');
+}
+
+async function guardarAjuste(){
+  const billId=$('ajuste-bill-id').value;
+  const saldoNuevo=parseFloat($('ajuste-nuevo').value);
+  const motivo=$('ajuste-motivo').value.trim();
+  if(!motivo){alerta('Ingresá el motivo del ajuste','err');return;}
+  // Obtener saldo anterior
+  const{data:b}=await SB.from('billeteras').select('saldo_actual,nombre').eq('id',billId).single();
+  const saldoAnterior=b?.saldo_actual||0;
+  // Guardar ajuste en historial
+  await SB.from('ajustes_saldo').insert({billetera_id:billId,saldo_anterior:saldoAnterior,saldo_nuevo:saldoNuevo,motivo});
+  // Actualizar saldo
+  // Para ajuste manual: actualizar saldo_inicial y saldo_actual juntos
+  const{error}=await SB.from('billeteras').update({saldo_actual:saldoNuevo,saldo_inicial:saldoNuevo}).eq('id',billId);
+  if(error){alerta('Error: '+error.message,'err');return;}
+  closeModal('m-ajuste');alerta(`✓ Saldo ajustado a $${fmt(saldoNuevo)}`);
+  await lookup();adminBilleteras();
+}
+async function delBill(id){if(!confirm('¿Eliminar?'))return;await SB.from('billeteras').delete().eq('id',id);alerta('Eliminada');await lookup();adminBilleteras();}
+
+async function loadDetalleBill(forceBillId){
+  const billId=forceBillId||$('f-bill-sel')?.value;
+  if(forceBillId&&$('f-bill-sel'))$('f-bill-sel').value=forceBillId;
+  if(!billId){$('bill-detalle').innerHTML='';return;}
+  const bill=_bill.find(b=>b.id===billId);
+  const cajId=$('f-bill-caj')?.value,turno=$('f-bill-turno')?.value,tipo=$('f-bill-tipo')?.value;
+  const f1=$('f-bill-f1')?.value,f2=$('f-bill-f2')?.value;
+
+  // Saldos del turno
+  let qs=SB.from('saldos_billetera').select('*,cajeros(nombre)').eq('billetera_id',billId).order('fecha',{ascending:false});
+  if(cajId)qs=qs.eq('cajero_id',cajId);if(turno)qs=qs.eq('numero_turno',turno);
+  if(f1)qs=qs.gte('fecha',f1);if(f2)qs=qs.lte('fecha',f2);
+  const{data:saldos}=await qs;
+
+  // Extracciones
+  let qe=SB.from('extracciones_v2').select('*,cajeros(nombre)').eq('billetera_id',billId).order('fecha',{ascending:false});
+  if(cajId)qe=qe.eq('cajero_id',cajId);if(f1)qe=qe.gte('fecha',f1);if(f2)qe=qe.lte('fecha',f2);
+  const{data:exts}=await qe;
+
+  // Operaciones especiales
+  const{data:opBills}=await SB.from('operacion_billeteras').select('*,operaciones_especiales(id,fecha,descripcion,monto_total,numero_turno,cajeros(nombre))').eq('billetera_id',billId);
+
+  const totalVar=(saldos||[]).filter(s=>s.saldo_final!==null).reduce((a,s)=>a+(Number(s.saldo_final)-Number(s.saldo_inicial)),0);
+  const totalExt=(exts||[]).reduce((a,e)=>a+Number(e.monto),0);
+
+  $('bill-detalle').innerHTML=`
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 18px;margin-bottom:14px;display:flex;gap:20px;flex-wrap:wrap;align-items:center;">
+      <div><div style="font-size:9px;color:var(--text3);font-family:var(--mono);margin-bottom:3px">BILLETERA</div><div style="font-weight:600;font-size:16px">${bill?.nombre||'—'}</div><div style="font-size:10px;color:var(--text3)">${bill?.plataforma||''}</div></div>
+      <div><div style="font-size:9px;color:var(--text3);font-family:var(--mono);margin-bottom:3px">VARIACIÓN TOTAL</div><div style="font-family:var(--mono);font-size:18px;font-weight:600;${totalVar>=0?'color:var(--green)':'color:var(--red)'}">${totalVar>=0?'+':''}$${fmt(totalVar)}</div></div>
+      <div><div style="font-size:9px;color:var(--text3);font-family:var(--mono);margin-bottom:3px">EXTRACCIONES</div><div style="font-family:var(--mono);font-size:18px;font-weight:600;color:var(--red)">-$${fmt(totalExt)}</div></div>
+    </div>
+
+    ${tipo===''||tipo==='saldo'?`
+    <div style="font-family:var(--mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--blue);margin-bottom:8px">Saldos por turno</div>
+    <div class="tw" style="margin-bottom:14px;"><table><thead><tr><th>Fecha</th><th>Cajero</th><th>Turno</th><th>Saldo ini.</th><th>Saldo fin.</th><th>Variación</th></tr></thead>
+    <tbody>${!(saldos||[]).length?`<tr><td colspan="6"><div class="empty">Sin saldos</div></td></tr>`:saldos.map(s=>{const v=s.saldo_final!==null?Number(s.saldo_final)-Number(s.saldo_inicial):null;return`<tr>
+      <td class="tm" style="font-size:11px">${s.fecha}</td><td>${s.cajeros?.nombre||'—'}</td><td>${tbadge(s.numero_turno)}</td>
+      <td class="tm">$${fmt(s.saldo_inicial)}</td>
+      <td class="tm">${s.saldo_final!==null?'$'+fmt(s.saldo_final):'<span style="color:var(--text3)">—</span>'}</td>
+      <td>${v!==null?fmtRes(v):'<span style="color:var(--text3)">—</span>'}</td>
+    </tr>`;}).join('')}</tbody></table></div>`:''}
+
+    ${tipo===''||tipo==='extraccion'?`
+    <div style="font-family:var(--mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--red);margin-bottom:8px">Extracciones</div>
+    <div class="tw" style="margin-bottom:14px;"><table><thead><tr><th>Fecha</th><th>Cajero</th><th>Monto</th><th>Motivo</th></tr></thead>
+    <tbody>${!(exts||[]).length?`<tr><td colspan="4"><div class="empty">Sin extracciones</div></td></tr>`:exts.map(e=>`<tr>
+      <td class="tm" style="font-size:11px">${e.fecha}</td><td>${e.cajeros?.nombre||'—'}</td>
+      <td class="monto-n">-$${fmt(e.monto)}</td><td style="color:var(--text3)">${e.motivo||'—'}</td>
+    </tr>`).join('')}</tbody></table></div>`:''}
+
+    ${tipo===''||tipo==='operacion'?`
+    <div style="font-family:var(--mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--purple);margin-bottom:8px">Operaciones especiales</div>
+    <div class="tw" style="margin-bottom:14px;"><table><thead><tr><th>Fecha</th><th>Cajero</th><th>Turno</th><th>Descripción</th><th>Aporte</th></tr></thead>
+    <tbody>${!(opBills||[]).length?`<tr><td colspan="5"><div class="empty">Sin operaciones</div></td></tr>`:opBills.map(ob=>`<tr>
+      <td class="tm" style="font-size:11px">${ob.operaciones_especiales?.fecha||'—'}</td>
+      <td>${ob.operaciones_especiales?.cajeros?.nombre||'—'}</td>
+      <td>${tbadge(ob.operaciones_especiales?.numero_turno)}</td>
+      <td>${ob.operaciones_especiales?.descripcion||'—'}</td>
+      <td class="monto-n">-$${fmt(ob.monto)}</td>
+    </tr>`).join('')}</tbody></table></div>`:''}
+  `;
+}
+
+async function initCruce(){$('cruce-fecha').value=hoy();loadCruce();}
+async function loadCruce(){
+  const fecha=$('cruce-fecha').value||hoy();
+  const{data:cr}=await SB.from('cruce_turno').select('*,cajeros(nombre)').eq('fecha',fecha).order('numero_turno');
+  const cont=$('a-cruce-cont');
+  if(!cr?.length){cont.innerHTML=`<div class="empty">Sin cruces para esta fecha. Cargá saldos de billetera y presioná "Recalcular".</div>`;return;}
+  cont.innerHTML=cr.map(cruceHTML).join('');
+}
+async function recalcularCruces(){
+  const fecha=$('cruce-fecha').value||hoy();
+  const{data:t}=await SB.from('turnos').select('cajero_id,numero_turno').eq('fecha',fecha);
+  const{data:s}=await SB.from('saldos_billetera').select('cajero_id,numero_turno').eq('fecha',fecha);
+  const combos=new Set();
+  [...(t||[]),...(s||[])].forEach(x=>{if(x.cajero_id&&x.numero_turno)combos.add(`${x.cajero_id}|${x.numero_turno}`);});
+  for(const c of combos){const[cid,nt]=c.split('|');await SB.rpc('recalcular_cruce_v5',{p_cajero_id:cid,p_fecha:fecha,p_turno:parseInt(nt)});}
+  alerta(`✓ ${combos.size} cruce(s) recalculado(s)`);loadCruce();
+}
+
+async function adminExtracciones(){
+  fillSel('ae-caj',_caj,c=>c.nombre,c=>c.id,'Todos los cajeros');
+  fillSel('ae-bill',_bill,b=>b.nombre,b=>b.id,'Todas las billeteras');
+  fillSel('ie-caj',_caj,c=>c.nombre,c=>c.id,'Seleccioná...');
+  const bs=$('ie-bill');if(bs)bs.innerHTML='<option value="">Sin billetera</option>'+_bill.map(b=>`<option value="${b.id}">${b.nombre}</option>`).join('');
+  $('ie-fecha').value=hoy();
+  const cajId=$('ae-caj')?.value,billId=$('ae-bill')?.value,fecha=$('ae-fecha')?.value;
+  let q=SB.from('extracciones_v2').select('*,cajeros(nombre),billeteras(nombre)').order('fecha',{ascending:false}).limit(200);
+  if(cajId)q=q.eq('cajero_id',cajId);if(billId)q=q.eq('billetera_id',billId);if(fecha)q=q.eq('fecha',fecha);
+  const{data}=await q;
+  const total=(data||[]).reduce((a,e)=>a+Number(e.monto),0);
+  $('ae-cards').innerHTML=`
+    <div class="card cr"><div class="clabel">Total extracciones</div><div class="cval vr">-$${fmt(total)}</div></div>
+    <div class="card cb"><div class="clabel">Registros</div><div class="cval vb">${(data||[]).length}</div></div>
+  `;
+  const tb=$('a-tb-ext');
+  if(!data?.length){tb.innerHTML=`<tr><td colspan="5"><div class="empty">Sin extracciones</div></td></tr>`;return;}
+  tb.innerHTML=data.map(e=>`<tr>
+    <td class="tm" style="font-size:11px">${e.fecha}</td><td>${e.cajeros?.nombre||'—'}</td>
+    <td>${e.billeteras?.nombre||'—'}</td><td class="monto-n">-$${fmt(e.monto)}</td>
+    <td style="color:var(--text3)">${e.motivo||'—'}</td>
+  </tr>`).join('');
+}
+
+async function saveExtraccion(esCajero){
+  let cajero_id,billetera_id,fecha,monto,motivo;
+  if(esCajero){
+    cajero_id=_perfil?.cajero_id;
+    billetera_id=$('ce-bill').value||null;fecha=$('ce-fecha').value;
+    monto=parseFloat($('ce-monto').value);motivo=$('ce-motivo').value.trim();
+  } else {
+    cajero_id=$('ie-caj').value;billetera_id=$('ie-bill').value||null;
+    fecha=$('ie-fecha').value;monto=parseFloat($('ie-monto').value);motivo=$('ie-motivo').value.trim();
+  }
+  if(!cajero_id){alerta('Sin cajero','err');return;}
+  if(!monto||monto<=0){alerta('Monto inválido','err');return;}
+  if(!motivo){alerta('Ingresá el motivo','err');return;}
+  const{error}=await SB.from('extracciones_v2').insert({cajero_id,billetera_id,fecha,monto,motivo});
+  if(error){alerta('Error: '+error.message,'err');return;}
+  await SB.rpc('recalcular_todos_saldos');
+  closeModal(esCajero?'m-extraccion-cajero':'m-extraccion');
+  alerta('✓ Extracción registrada');
+  if(esCajero)cajeroLoadExt();else adminExtracciones();
+}
+
+async function adminOperaciones(){
+  fillSel('io-caj',_caj,c=>c.nombre,c=>c.id,'Seleccioná...');
+  $('io-fecha').value=hoy();
+  $('io-bills-cont').innerHTML='';addOpBill('io-bills-cont');
+  const{data}=await SB.from('operaciones_especiales').select('*,cajeros(nombre),operacion_billeteras(monto,es_principal,billeteras(nombre))').order('fecha',{ascending:false}).limit(100);
+  const tb=$('a-tb-op');
+  if(!data?.length){tb.innerHTML=`<tr><td colspan="6"><div class="empty">Sin operaciones</div></td></tr>`;return;}
+  tb.innerHTML=data.map(op=>{
+    const bills=(op.operacion_billeteras||[]).map(ob=>`<span class="badge bp">${ob.billeteras?.nombre||'—'} $${fmt(ob.monto)}</span>`).join(' ');
+    return`<tr>
+      <td class="tm" style="font-size:11px">${op.fecha}</td><td>${op.cajeros?.nombre||'—'}</td>
+      <td>${tbadge(op.numero_turno)}</td><td>${op.descripcion}</td>
+      <td class="monto-n">-$${fmt(op.monto_total)}</td><td>${bills}</td>
+    </tr>`;
+  }).join('');
+}
+
+function addOpBill(contId){
+  const cont=$(contId);if(!contId||!cont)return;
+  const bOpts=_bill.map(b=>`<option value="${b.id}">${b.nombre}</option>`).join('');
+  const idx=Date.now();
+  const div=document.createElement('div');
+  div.className='interv-row';div.id=`ob${idx}`;
+  div.innerHTML=`
+    <div class="fg" style="flex:2"><label>Billetera</label><select id="obs${idx}">${bOpts}</select></div>
+    <div class="fg" style="flex:1"><label>Monto</label><input type="number" id="obm${idx}" placeholder="0.00" step="0.01"></div>
+    <div class="fg" style="flex:0"><label>Principal</label><input type="checkbox" id="obp${idx}" style="width:20px;height:20px;margin-top:8px"></div>
+    <button class="btn btn-r sm" onclick="document.getElementById('ob${idx}').remove()" style="margin-top:16px">✕</button>
+  `;
+  cont.appendChild(div);
+}
+
+async function saveOperacion(esCajero){
+  const cajero_id=esCajero?_perfil?.cajero_id:$('io-caj').value;
+  const fecha=esCajero?$('co-fecha').value:$('io-fecha').value;
+  const numero_turno=parseInt(esCajero?$('co-turno').value:$('io-turno').value);
+  const descripcion=esCajero?$('co-desc').value.trim():$('io-desc').value.trim();
+  const contId=esCajero?'co-bills-cont':'io-bills-cont';
+  if(!cajero_id){alerta('Sin cajero','err');return;}
+  if(!descripcion){alerta('Ingresá una descripción','err');return;}
+
+  // Recolectar billeteras
+  const cont=$(contId);
+  const filas=[...cont.querySelectorAll('[id^="ob"]')].map(div=>{
+    const idx=div.id.replace('ob','');
+    return{billetera_id:$('obs'+idx)?.value||null,monto:parseFloat($('obm'+idx)?.value)||0,es_principal:$('obp'+idx)?.checked||false};
+  }).filter(x=>x.billetera_id&&x.monto>0);
+  if(!filas.length){alerta('Agregá al menos una billetera con monto','err');return;}
+  const monto_total=filas.reduce((a,x)=>a+x.monto,0);
+
+  const{data:op,error:oe}=await SB.from('operaciones_especiales').insert({cajero_id,fecha,numero_turno,descripcion,monto_total}).select().single();
+  if(oe){alerta('Error: '+oe.message,'err');return;}
+  const{error:be}=await SB.from('operacion_billeteras').insert(filas.map(x=>({...x,operacion_id:op.id})));
+  if(be){alerta('Error en billeteras: '+be.message,'err');return;}
+
+  await SB.rpc('recalcular_todos_saldos');
+  closeModal(esCajero?'m-operacion-cajero':'m-operacion');
+  alerta('✓ Operación registrada');
+  if(esCajero)cajeroLoadOp();else adminOperaciones();
+}
+
+function initCierre(){
+  const sel=$('cierre-mes');sel.innerHTML='';
+  const n=new Date();
+  for(let i=0;i<12;i++){const d=new Date(n.getFullYear(),n.getMonth()-i,1);const v=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;sel.innerHTML+=`<option value="${v}">${d.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</option>`;}
+  generarCierre();
+}
+async function generarCierre(){
+  const mes=$('cierre-mes').value;if(!mes)return;
+  const[y,m]=mes.split('-');const desde=`${y}-${m}-01`,hasta=`${y}-${m}-${new Date(y,m,0).getDate()}`;
+  const{data:tp}=await SB.from('turno_panel').select('*,turnos!inner(cajero_id,fecha,numero_turno,cajeros(nombre)),paneles(nombre)').gte('turnos.fecha',desde).lte('turnos.fecha',hasta);
+  const rows=(tp||[]).filter(r=>r.turnos?.fecha>=desde&&r.turnos?.fecha<=hasta);
+  const{data:cr}=await SB.from('cruce_turno').select('*,cajeros(nombre)').gte('fecha',desde).lte('fecha',hasta);
+  const{data:ext}=await SB.from('extracciones_v2').select('*,cajeros(nombre)').gte('fecha',desde).lte('fecha',hasta);
+  const{data:saldos}=await SB.from('saldos_billetera').select('*,cajeros(nombre),billeteras(nombre)').gte('fecha',desde).lte('fecha',hasta);
+  const cont=$('cierre-res');
+  if(!rows.length){cont.innerHTML=`<div class="empty">Sin datos en este período</div>`;return;}
+  const xP={},xC={},xT={1:{bon:0,res:0,n:0},2:{bon:0,res:0,n:0},3:{bon:0,res:0,n:0},4:{bon:0,res:0,n:0}};
+  rows.forEach(r=>{
+    const pk=r.paneles?.nombre||'Sin panel',ck=r.turnos?.cajeros?.nombre||'Sin cajero',nt=r.turnos?.numero_turno;
+    if(!xP[pk])xP[pk]={bon:0,res:0,fi:0,ff:0,n:0};if(!xC[ck])xC[ck]={bon:0,res:0,n:0};
+    xP[pk].fi+=Number(r.fichas_iniciales);xP[pk].ff+=Number(r.fichas_finales);xP[pk].bon+=Number(r.bonificaciones);xP[pk].res+=resBil(r.fichas_iniciales,r.fichas_finales);xP[pk].n++;
+    xC[ck].bon+=Number(r.bonificaciones);xC[ck].res+=resBil(r.fichas_iniciales,r.fichas_finales);xC[ck].n++;
+    if(nt&&xT[nt]){xT[nt].bon+=Number(r.bonificaciones);xT[nt].res+=resBil(r.fichas_iniciales,r.fichas_finales);xT[nt].n++;}
+  });
+  const totRes=rows.reduce((a,r)=>a+resBil(r.fichas_iniciales,r.fichas_finales),0);
+  const totBon=rows.reduce((a,r)=>a+Number(r.bonificaciones),0);
+  const totExt=(ext||[]).reduce((a,e)=>a+Number(e.monto),0);
+  const ok=(cr||[]).filter(x=>x.estado==='ok').length,disc=(cr||[]).filter(x=>x.estado==='discrepancia').length;
+  const totVarBill=(saldos||[]).filter(s=>s.saldo_final!==null).reduce((a,s)=>a+(Number(s.saldo_final)-Number(s.saldo_inicial)),0);
+  const blk=(title,color,headers,rows2)=>`<div style="border-radius:var(--r);border:1px solid var(--border);overflow:hidden;margin-bottom:14px;"><div style="background:var(--surface2);padding:10px 14px;font-family:var(--mono);font-size:9px;font-weight:600;color:${color};letter-spacing:2px;text-transform:uppercase;">${title}</div><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows2}</tbody></table></div>`;
+  cont.innerHTML=`
+    <div class="cards">
+      <div class="card cg"><div class="clabel">Resultado fichas</div><div class="cval ${totRes>=0?'vg':'vr'}">${totRes>=0?'+':''}$${fmt(totRes)}</div></div>
+      <div class="card cb"><div class="clabel">Variación billeteras</div><div class="cval ${totVarBill>=0?'vg':'vr'}">${totVarBill>=0?'+':''}$${fmt(totVarBill)}</div></div>
+      <div class="card co"><div class="clabel">Bonificaciones</div><div class="cval vo">$${fmt(totBon)}</div></div>
+      <div class="card cr"><div class="clabel">Extracciones</div><div class="cval vr">-$${fmt(totExt)}</div></div>
+      <div class="card cg"><div class="clabel">Cruces OK</div><div class="cval vg">${ok}</div></div>
+      <div class="card cr"><div class="clabel">Discrepancias</div><div class="cval vr">${disc}</div></div>
+    </div>
+    ${blk('Por panel','var(--blue)',['Panel','Turnos','F.Ini','F.Fin','Bonificaciones','Resultado'],Object.entries(xP).map(([k,v])=>`<tr><td style="font-weight:500">${k}</td><td class="tm">${v.n}</td><td class="tm">${fmt(v.fi)}</td><td class="tm">${fmt(v.ff)}</td><td class="tm" style="color:var(--orange)">$${fmt(v.bon)}</td><td>${fmtRes(v.res)}</td></tr>`).join(''))}
+    ${blk('Por cajero','var(--green)',['Cajero','Turnos','Bonificaciones','Resultado'],Object.entries(xC).map(([k,v])=>`<tr><td style="font-weight:500">${k}</td><td class="tm">${v.n}</td><td class="tm" style="color:var(--orange)">$${fmt(v.bon)}</td><td>${fmtRes(v.res)}</td></tr>`).join(''))}
+    ${blk('Por turno','var(--purple)',['Turno','Registros','Bonificaciones','Resultado'],[1,2,3,4].filter(t=>xT[t].n>0).map(t=>`<tr><td>${tbadge(t)}</td><td class="tm">${xT[t].n}</td><td class="tm" style="color:var(--orange)">$${fmt(xT[t].bon)}</td><td>${fmtRes(xT[t].res)}</td></tr>`).join(''))}
+    ${cr?.length?blk('Cruces del período','var(--yellow)',['Fecha','Cajero','Turno','Esperado (fichas)','Real (billetera)','Dif.','Estado'],cr.map(c=>{const esp=c.monto_esperado??c.resultado_fichas??0,real=c.monto_real??c.variacion_billetera??0,dif=Math.abs(esp-real);return`<tr>
+      <td class="tm" style="font-size:11px">${c.fecha}</td><td>${c.cajeros?.nombre||'—'}</td><td>${tbadge(c.numero_turno)}</td>
+      <td>${fmtRes(esp)}</td><td>${fmtRes(real)}</td><td class="tm" style="color:var(--text3)">$${fmt(dif)}</td>
+      <td>${c.estado==='ok'?'<span style="color:var(--green);font-family:var(--mono);font-size:11px">✔ OK</span>':c.estado==='tolerancia'?'<span style="color:var(--yellow);font-family:var(--mono);font-size:11px">≈ Tol.</span>':c.estado==='discrepancia'?'<span style="color:var(--red);font-family:var(--mono);font-size:11px">✖ Disc.</span>':'<span style="color:var(--text3);font-family:var(--mono);font-size:11px">—</span>'}</td>
+    </tr>`;}).join('')):''}
+  `;
+}
+
+async function initConfig(){const{data}=await SB.from('config_sistema').select('*');const tol=(data||[]).find(x=>x.clave==='tolerancia_cruce');if(tol)$('cfg-tol').value=tol.valor;}
+async function guardarConfig(){await SB.from('config_sistema').upsert({clave:'tolerancia_cruce',valor:String($('cfg-tol').value)});alerta('✓ Guardado');}
+
+// ══ CAJERO ══
+async function cajeroInicio(){
+  const cajId=_perfil?.cajero_id;if(!cajId)return;
+  if(!_pan.length){const{data:p}=await SB.from('paneles').select('*').eq('activo',true).order('nombre');_pan=p||[];}
+  if(!_bill.length){const{data:b}=await SB.from('billeteras').select('id,nombre,plataforma').order('nombre');_bill=b||[];}
+  const{data:c}=await SB.from('cajeros').select('nombre').eq('id',cajId).single();
+  $('c-nombre-bienvenida').textContent=c?.nombre||'—';
+  $('c-turno-actual').textContent=TURNOS_FULL[turnoActual()]||'—';
+  const d=hoy();
+  const{data:tp}=await SB.from('turno_panel').select('*,turnos!inner(cajero_id,fecha,numero_turno),paneles(nombre)').order('created_at',{ascending:false}).limit(50);
+  const hoyRows=(tp||[]).filter(r=>r.turnos?.fecha===d&&r.turnos?.cajero_id===cajId);
+  const totBon=hoyRows.reduce((a,r)=>a+Number(r.bonificaciones),0);
+  $('c-cards-hoy').innerHTML=`
+    <div class="card cb"><div class="clabel">Turnos cargados hoy</div><div class="cval vb">${hoyRows.length}</div></div>
+    <div class="card co"><div class="clabel">Bonificaciones hoy</div><div class="cval vo">$${fmt(totBon)}</div></div>
+  `;
+  const tb=$('c-tb-reciente'),rec=(tp||[]).filter(r=>r.turnos?.cajero_id===cajId).slice(0,10);
+  if(!rec.length){tb.innerHTML=`<tr><td colspan="7"><div class="empty">Sin turnos cargados aún</div></td></tr>`;return;}
+  tb.innerHTML=rec.map(r=>`<tr>
+    <td class="tm" style="font-size:11px">${r.turnos?.fecha||'—'}</td><td>${tbadge(r.turnos?.numero_turno)}</td>
+    <td><span class="badge bb">${r.paneles?.nombre||'—'}</span></td>
+    <td class="tm">${r.hora_inicio||'—'}</td><td class="tm">${fmt(r.fichas_iniciales)}</td>
+    <td class="tm">${fmt(r.fichas_finales)}</td><td class="tm" style="color:var(--orange)">$${fmt(r.bonificaciones)}</td>
+  </tr>`).join('');
+}
+
+async function cajeroInitTurno(){
+  const cajId=_perfil?.cajero_id;if(!cajId)return;
+  if(!_pan.length){const{data:p}=await SB.from('paneles').select('*').eq('activo',true).order('nombre');_pan=p||[];}
+  if(!_bill.length){const{data:b}=await SB.from('billeteras').select('id,nombre,plataforma').order('nombre');_bill=b||[];}
+  $('ct-fecha').value=hoy();_prows=[];_pidx=0;$('ct-paneles').innerHTML='';
+  addCajeroPanel();cajeroTurnosHoy();
+}
+
+function addCajeroPanel(){
+  const idx=++_pidx;
+  const pOpts=_pan.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+  const bOpts=_bill.map(b=>`<option value="${b.id}">${b.nombre}</option>`).join('');
+  const d=document.createElement('div');d.className='prow';d.id=`cpr${idx}`;
+  d.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div class="prow-title">Panel ${idx}</div>
+      ${idx>1?`<button class="btn btn-s sm" onclick="rmCajeroPanel(${idx})" style="color:var(--red);border-color:var(--red)">✕</button>`:''}
+    </div>
+    <div class="fgrid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));">
+      <div class="fg"><label>Panel</label><select id="cpp${idx}">${pOpts}</select></div>
+      <div class="fg"><label>Billetera</label><select id="cpb${idx}"><option value="">Sin billetera</option>${bOpts}</select></div>
+      <div class="fg"><label>Hora inicio (opcional)</label><input type="time" id="cphi${idx}"></div>
+      <div class="fg"><label>Hora fin (opcional)</label><input type="time" id="cphf${idx}"></div>
+      <div class="fg"><label>Fichas iniciales</label><input type="number" id="cpfi${idx}" value="0" step="0.01" oninput="cajPrev(${idx})"></div>
+      <div class="fg"><label>Fichas finales</label><input type="number" id="cpff${idx}" value="0" step="0.01" oninput="cajPrev(${idx})"></div>
+      <div class="fg"><label>Bonificaciones</label><input type="number" id="cpbo${idx}" value="0" step="0.01"><span class="hint">Solo afecta fichas</span></div>
+    </div>
+    <div id="cpv${idx}" class="prev"></div>
+  `;
+  $('ct-paneles').appendChild(d);_prows.push(idx);
+}
+function rmCajeroPanel(idx){$(`cpr${idx}`)?.remove();_prows=_prows.filter(i=>i!==idx);}
+function actualizarTurnoBadge(){}`)?.value;const n=turnoDesdeHora(h);$('ct-turno-badge').innerHTML=n?`<span class="tbadge">${TURNOS_FULL[n]}</span>`:'— ingresá hora inicio';}
+function cajPrev(idx){const fi=parseFloat($(`cpfi${idx}`)?.value)||0,ff=parseFloat($(`cpff${idx}`)?.value)||0,res=resBil(fi,ff),el=$(`cpv${idx}`);if(!el)return;el.style.display='block';if(res>0){el.className='prev prev-ok';el.textContent=`✔ +$${fmt(res)} (bajaron fichas)`;}else if(res<0){el.className='prev prev-no';el.textContent=`✖ -$${fmt(Math.abs(res))} (subieron fichas)`;}else{el.className='prev prev-ok';el.textContent='$0.00';}}
+
+async function cajeroGuardarTurno(){
+  const cajId=_perfil?.cajero_id;if(!cajId){alerta('Error: sin cajero','err');return;}
+  const fecha=$('ct-fecha').value;
+  const nTurno=parseInt($('ct-turno-sel')?.value||'1');
+  if(!nTurno){alerta('Seleccioná un turno','err');return;}
+  const primeraHora=$(`cphi${_prows[0]}`)?.value||null;
+  const{data:turno,error:te}=await SB.from('turnos').insert({cajero_id:cajId,fecha,numero_turno:nTurno,hora_inicio:primeraHora||null}).select().single();
+  if(te){alerta('Error: '+te.message,'err');return;}
+  const filas=_prows.map(idx=>({turno_id:turno.id,panel_id:$(`cpp${idx}`)?.value||null,billetera_id:$(`cpb${idx}`)?.value||null,hora_inicio:$(`cphi${idx}`)?.value||null,hora_fin:$(`cphf${idx}`)?.value||null,fichas_iniciales:parseFloat($(`cpfi${idx}`)?.value)||0,fichas_finales:parseFloat($(`cpff${idx}`)?.value)||0,bonificaciones:parseFloat($(`cpbo${idx}`)?.value)||0,cerrado:true})).filter(r=>r.panel_id);
+  if(!filas.length){alerta('Completá al menos un panel','err');return;}
+  const{error:pe}=await SB.from('turno_panel').insert(filas);
+  if(pe){await SB.from('turnos').delete().eq('id',turno.id);alerta('Error: '+pe.message,'err');return;}
+  await SB.rpc('recalcular_cruce_v5',{p_cajero_id:cajId,p_fecha:fecha,p_turno:nTurno});
+  alerta('✓ Turno guardado');_prows=[];_pidx=0;$('ct-paneles').innerHTML='';$('ct-fecha').value=hoy();addCajeroPanel();cajeroTurnosHoy();
+}
+
+async function cajeroTurnosHoy(){
+  const cajId=_perfil?.cajero_id;if(!cajId)return;
+  const d=hoy();const{data}=await SB.from('turno_panel').select('*,turnos!inner(cajero_id,fecha,numero_turno),paneles(nombre)').order('created_at',{ascending:false}).limit(50);
+  const rows=(data||[]).filter(r=>r.turnos?.fecha===d&&r.turnos?.cajero_id===cajId);
+  const tb=$('ct-tb-hoy');
+  if(!rows.length){tb.innerHTML=`<tr><td colspan="7"><div class="empty">Sin turnos hoy</div></td></tr>`;return;}
+  tb.innerHTML=rows.map(r=>`<tr><td>${tbadge(r.turnos?.numero_turno)}</td><td><span class="badge bb">${r.paneles?.nombre||'—'}</span></td><td class="tm">${r.hora_inicio||'—'}</td><td class="tm">${r.hora_fin||'—'}</td><td class="tm">${fmt(r.fichas_iniciales)}</td><td class="tm">${fmt(r.fichas_finales)}</td><td class="tm" style="color:var(--orange)">$${fmt(r.bonificaciones)}</td></tr>`).join('');
+}
+
+// ── SALDOS CAJERO ──
+async function cajeroInitSaldos(){
+  const cajId=_perfil?.cajero_id;if(!cajId)return;
+  if(!_bill.length){const{data:b}=await SB.from('billeteras').select('id,nombre,plataforma').order('nombre');_bill=b||[];}
+  $('cs-fecha').value=hoy();_srows=[];_sidx=0;$('cs-billeteras-cont').innerHTML='';
+  addSaldoRow();
+  // Cargar saldos del cajero
+  const{data:saldos}=await SB.from('saldos_billetera').select('*,billeteras(nombre)').eq('cajero_id',cajId).order('fecha',{ascending:false}).limit(50);
+  const tb=$('cs-tb');
+  if(!saldos?.length){tb.innerHTML=`<tr><td colspan="6"><div class="empty">Sin saldos registrados</div></td></tr>`;return;}
+  tb.innerHTML=saldos.map(s=>{const v=s.saldo_final!==null?Number(s.saldo_final)-Number(s.saldo_inicial):null;return`<tr>
+    <td class="tm" style="font-size:11px">${s.fecha}</td><td>${tbadge(s.numero_turno)}</td>
+    <td>${s.billeteras?.nombre||'—'}</td><td class="tm">$${fmt(s.saldo_inicial)}</td>
+    <td class="tm">${s.saldo_final!==null?'$'+fmt(s.saldo_final):'<span style="color:var(--text3)">—</span>'}</td>
+    <td>${v!==null?fmtRes(v):'<span style="color:var(--text3)">Pendiente</span>'}</td>
+  </tr>`;}).join('');
+}
+
+function addSaldoRow(){
+  const idx=++_sidx;
+  const bOpts=_bill.map(b=>`<option value="${b.id}">${b.nombre}</option>`).join('');
+  const d=document.createElement('div');d.className='saldo-row';d.id=`sr${idx}`;
+  d.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div class="saldo-row-title">Billetera ${idx}</div>
+      ${idx>1?`<button class="btn btn-s sm" onclick="rmSaldoRow(${idx})" style="color:var(--red);border-color:var(--red)">✕</button>`:''}
+    </div>
+    <div class="fgrid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));">
+      <div class="fg"><label>Billetera</label><select id="sb${idx}">${bOpts}</select></div>
+      <div class="fg"><label>Saldo inicial</label><input type="number" id="si${idx}" value="0" step="0.01" placeholder="Al inicio del turno"></div>
+      <div class="fg"><label>Saldo final</label><input type="number" id="sf${idx}" placeholder="Al cierre del turno (opcional)" step="0.01"><span class="hint">Podés cargarlo al final</span></div>
+    </div>
+  `;
+  $('cs-billeteras-cont').appendChild(d);_srows.push(idx);
+}
+function rmSaldoRow(idx){$(`sr${idx}`)?.remove();_srows=_srows.filter(i=>i!==idx);}
+
+async function guardarSaldos(){
+  const cajId=_perfil?.cajero_id;if(!cajId){alerta('Sin cajero','err');return;}
+  const fecha=$('cs-fecha').value,numero_turno=parseInt($('cs-turno').value);
+  const filas=_srows.map(idx=>({
+    cajero_id:cajId,billetera_id:$(`sb${idx}`)?.value||null,
+    fecha,numero_turno,
+    saldo_inicial:parseFloat($(`si${idx}`)?.value)||0,
+    saldo_final:$(`sf${idx}`)?.value!==''?parseFloat($(`sf${idx}`)?.value):null,
+  })).filter(x=>x.billetera_id);
+  if(!filas.length){alerta('Seleccioná al menos una billetera','err');return;}
+  for(const f of filas){
+    const{error}=await SB.from('saldos_billetera').upsert(f,{onConflict:'cajero_id,billetera_id,fecha,numero_turno'});
+    if(error){alerta('Error: '+error.message,'err');return;}
+  }
+  await SB.rpc('recalcular_cruce_v5',{p_cajero_id:cajId,p_fecha:fecha,p_turno:numero_turno});
+  // Recalcular saldos de billetera automáticamente
+  await SB.rpc('recalcular_todos_saldos');
+  alerta('✓ Saldos guardados');cajeroInitSaldos();
+}
+
+async function cajeroLoadExt(){
+  const cajId=_perfil?.cajero_id;if(!cajId)return;
+  if(!_bill.length){const{data:b}=await SB.from('billeteras').select('id,nombre,plataforma').order('nombre');_bill=b||[];}
+  const bs=$('ce-bill');if(bs)bs.innerHTML='<option value="">Sin billetera</option>'+_bill.map(b=>`<option value="${b.id}">${b.nombre}</option>`).join('');
+  $('ce-fecha').value=hoy();
+  const{data}=await SB.from('extracciones_v2').select('*,billeteras(nombre)').eq('cajero_id',cajId).order('fecha',{ascending:false}).limit(100);
+  const tb=$('c-tb-ext');
+  if(!data?.length){tb.innerHTML=`<tr><td colspan="4"><div class="empty">Sin extracciones</div></td></tr>`;return;}
+  tb.innerHTML=data.map(e=>`<tr><td class="tm" style="font-size:11px">${e.fecha}</td><td>${e.billeteras?.nombre||'—'}</td><td class="monto-n">-$${fmt(e.monto)}</td><td style="color:var(--text3)">${e.motivo||'—'}</td></tr>`).join('');
+}
+
+async function cajeroLoadOp(){
+  const cajId=_perfil?.cajero_id;if(!cajId)return;
+  if(!_bill.length){const{data:b}=await SB.from('billeteras').select('id,nombre,plataforma').order('nombre');_bill=b||[];}
+  $('co-fecha').value=hoy();$('co-bills-cont').innerHTML='';addOpBill('co-bills-cont');
+  const{data}=await SB.from('operaciones_especiales').select('*,operacion_billeteras(monto,es_principal,billeteras(nombre))').eq('cajero_id',cajId).order('fecha',{ascending:false}).limit(50);
+  const tb=$('c-tb-op');
+  if(!data?.length){tb.innerHTML=`<tr><td colspan="5"><div class="empty">Sin operaciones especiales</div></td></tr>`;return;}
+  tb.innerHTML=data.map(op=>{const bills=(op.operacion_billeteras||[]).map(ob=>`<span class="badge bp">${ob.billeteras?.nombre||'—'} $${fmt(ob.monto)}</span>`).join(' ');return`<tr>
+    <td class="tm" style="font-size:11px">${op.fecha}</td><td>${tbadge(op.numero_turno)}</td>
+    <td>${op.descripcion}</td><td class="monto-n">-$${fmt(op.monto_total)}</td><td>${bills}</td>
+  </tr>`;}).join('');
+}
+
+async function cajeroHistorial(){
+  const cajId=_perfil?.cajero_id;if(!cajId)return;
+  const turno=$('ch-turno')?.value,f1=$('ch-f1')?.value,f2=$('ch-f2')?.value;
+  const{data}=await SB.from('turno_panel').select('*,turnos!inner(cajero_id,fecha,numero_turno),paneles(nombre)').order('created_at',{ascending:false}).limit(200);
+  let rows=(data||[]).filter(r=>r.turnos?.cajero_id===cajId);
+  if(turno)rows=rows.filter(r=>String(r.turnos?.numero_turno)===turno);
+  if(f1)rows=rows.filter(r=>r.turnos?.fecha>=f1);
+  if(f2)rows=rows.filter(r=>r.turnos?.fecha<=f2);
+  const tb=$('c-tb-hist');
+  if(!rows.length){tb.innerHTML=`<tr><td colspan="7"><div class="empty">Sin registros</div></td></tr>`;return;}
+  tb.innerHTML=rows.map(r=>`<tr><td class="tm" style="font-size:11px">${r.turnos?.fecha||'—'}</td><td>${tbadge(r.turnos?.numero_turno)}</td><td><span class="badge bb">${r.paneles?.nombre||'—'}</span></td><td class="tm">${r.hora_inicio||'—'}</td><td class="tm">${fmt(r.fichas_iniciales)}</td><td class="tm">${fmt(r.fichas_finales)}</td><td class="tm" style="color:var(--orange)">$${fmt(r.bonificaciones)}</td></tr>`).join('');
+}
+
+// ── EDITAR CARGAS (ADMIN) ──
+async function adminCargarEditar(){
+  fillSel('ee-caj',_caj,c=>c.nombre,c=>c.id,'Todos los cajeros');
+  fillSel('et-caj',_caj,c=>c.nombre,c=>c.id,'Seleccioná...');
+  fillSel('et-panel',_pan,p=>p.nombre,p=>p.id,'Seleccioná...');
+  fillSel('es-caj',_caj,c=>c.nombre,c=>c.id,'Seleccioná...');
+  fillSel('es-bill',_bill,b=>b.nombre,b=>b.id,'Seleccioná...');
+
+  const cajId=$('ee-caj')?.value;
+  const fecha=$('ee-fecha')?.value;
+  const tipo=$('ee-tipo')?.value||'fichas';
+  const cont=$('editar-tabla-cont');
+
+  if(tipo==='fichas'){
+    let q=SB.from('turno_panel').select('*,turnos!inner(id,cajero_id,fecha,numero_turno,cajeros(nombre)),paneles(nombre)').order('created_at',{ascending:false}).limit(200);
+    const{data}=await q;
+    let rows=data||[];
+    if(cajId) rows=rows.filter(r=>r.turnos?.cajero_id===cajId);
+    if(fecha) rows=rows.filter(r=>r.turnos?.fecha===fecha);
+
+    if(!rows.length){cont.innerHTML=`<div class="empty">Sin cargas para los filtros seleccionados</div>`;return;}
+    cont.innerHTML=`<div class="tw"><table><thead><tr>
+      <th>Fecha</th><th>Cajero</th><th>Turno</th><th>Panel</th><th>H.Ini</th><th>H.Fin</th>
+      <th>F.Ini</th><th>F.Fin</th><th>Bonif.</th><th>Editar</th>
+    </tr></thead><tbody>${rows.map(r=>`<tr>
+      <td class="tm" style="font-size:11px">${r.turnos?.fecha||'—'}</td>
+      <td style="font-weight:500">${r.turnos?.cajeros?.nombre||'—'}</td>
+      <td>${tbadge(r.turnos?.numero_turno)}</td>
+      <td><span class="badge bb">${r.paneles?.nombre||'—'}</span></td>
+      <td class="tm">${r.hora_inicio||'—'}</td>
+      <td class="tm">${r.hora_fin||'—'}</td>
+      <td class="tm">${fmt(r.fichas_iniciales)}</td>
+      <td class="tm">${fmt(r.fichas_finales)}</td>
+      <td class="tm" style="color:var(--orange)">$${fmt(r.bonificaciones)}</td>
+      <td><button class="btn btn-y sm" onclick="abrirEditTurno(${JSON.stringify(r).replace(/"/g,'&quot;')})">✏️</button></td>
+    </tr>`).join('')}</tbody></table></div>`;
+  } else {
+    let q=SB.from('saldos_billetera').select('*,cajeros(nombre),billeteras(nombre)').order('fecha',{ascending:false}).limit(200);
+    const{data}=await q;
+    let rows=data||[];
+    if(cajId) rows=rows.filter(r=>r.cajero_id===cajId);
+    if(fecha) rows=rows.filter(r=>r.fecha===fecha);
+
+    if(!rows.length){cont.innerHTML=`<div class="empty">Sin saldos para los filtros seleccionados</div>`;return;}
+    cont.innerHTML=`<div class="tw"><table><thead><tr>
+      <th>Fecha</th><th>Cajero</th><th>Turno</th><th>Billetera</th><th>Saldo ini.</th><th>Saldo fin.</th><th>Variación</th><th>Editar</th>
+    </tr></thead><tbody>${rows.map(s=>{const v=s.saldo_final!==null?Number(s.saldo_final)-Number(s.saldo_inicial):null;return`<tr>
+      <td class="tm" style="font-size:11px">${s.fecha}</td>
+      <td style="font-weight:500">${s.cajeros?.nombre||'—'}</td>
+      <td>${tbadge(s.numero_turno)}</td>
+      <td>${s.billeteras?.nombre||'—'}</td>
+      <td class="tm">$${fmt(s.saldo_inicial)}</td>
+      <td class="tm">${s.saldo_final!==null?'$'+fmt(s.saldo_final):'—'}</td>
+      <td>${v!==null?fmtRes(v):'—'}</td>
+      <td><button class="btn btn-y sm" onclick="abrirEditSaldo(${JSON.stringify(s).replace(/"/g,'&quot;')})">✏️</button></td>
+    </tr>`;}).join('')}</tbody></table></div>`;
+  }
+}
+
+function abrirEditTurno(r){
+  $('et-id').value=r.id;
+  $('et-caj').value=r.turnos?.cajero_id||'';
+  $('et-fecha').value=r.turnos?.fecha||'';
+  $('et-panel').value=r.panel_id||'';
+  $('et-turno').value=r.turnos?.numero_turno||1;
+  $('et-hora-ini').value=r.hora_inicio||'';
+  $('et-hora-fin').value=r.hora_fin||'';
+  $('et-fi').value=r.fichas_iniciales||0;
+  $('et-ff').value=r.fichas_finales||0;
+  $('et-bon').value=r.bonificaciones||0;
+  openModal('m-edit-turno');
+}
+
+async function guardarEditTurno(){
+  const id=$('et-id').value;
+  const cajero_id=$('et-caj').value;
+  const fecha=$('et-fecha').value;
+  const panel_id=$('et-panel').value;
+  const numero_turno=parseInt($('et-turno').value);
+  const hora_inicio=$('et-hora-ini').value||null;
+  const hora_fin=$('et-hora-fin').value||null;
+  const fichas_iniciales=parseFloat($('et-fi').value)||0;
+  const fichas_finales=parseFloat($('et-ff').value)||0;
+  const bonificaciones=parseFloat($('et-bon').value)||0;
+
+  // Actualizar turno_panel
+  const{error:e1}=await SB.from('turno_panel').update({panel_id,hora_inicio,hora_fin,fichas_iniciales,fichas_finales,bonificaciones}).eq('id',id);
+  if(e1){alerta('Error: '+e1.message,'err');return;}
+
+  // Actualizar turno (fecha y cajero)
+  const{data:tp}=await SB.from('turno_panel').select('turno_id').eq('id',id).single();
+  if(tp?.turno_id){
+    await SB.from('turnos').update({cajero_id,fecha,numero_turno}).eq('id',tp.turno_id);
+  }
+
+  // Recalcular cruce
+  await SB.rpc('recalcular_cruce_v5',{p_cajero_id:cajero_id,p_fecha:fecha,p_turno:numero_turno});
+  closeModal('m-edit-turno');
+  alerta('✓ Carga actualizada');
+  adminCargarEditar();
+}
+
+async function eliminarCarga(){
+  if(!confirm('¿Eliminar esta carga? No se puede deshacer.'))return;
+  const id=$('et-id').value;
+  const{data:tp}=await SB.from('turno_panel').select('turno_id').eq('id',id).single();
+  await SB.from('turno_panel').delete().eq('id',id);
+  // Si el turno quedó sin paneles, eliminarlo también
+  if(tp?.turno_id){
+    const{data:resto}=await SB.from('turno_panel').select('id').eq('turno_id',tp.turno_id);
+    if(!resto?.length) await SB.from('turnos').delete().eq('id',tp.turno_id);
+  }
+  closeModal('m-edit-turno');
+  alerta('✓ Carga eliminada');
+  adminCargarEditar();
+}
+
+function abrirEditSaldo(s){
+  $('es-id').value=s.id;
+  $('es-caj').value=s.cajero_id||'';
+  $('es-fecha').value=s.fecha||'';
+  $('es-bill').value=s.billetera_id||'';
+  $('es-turno').value=s.numero_turno||1;
+  $('es-si').value=s.saldo_inicial||0;
+  $('es-sf').value=s.saldo_final!==null?s.saldo_final:'';
+  openModal('m-edit-saldo');
+}
+
+async function guardarEditSaldo(){
+  const id=$('es-id').value;
+  const cajero_id=$('es-caj').value;
+  const fecha=$('es-fecha').value;
+  const billetera_id=$('es-bill').value;
+  const numero_turno=parseInt($('es-turno').value);
+  const saldo_inicial=parseFloat($('es-si').value)||0;
+  const saldo_final=$('es-sf').value!==''?parseFloat($('es-sf').value):null;
+
+  const{error}=await SB.from('saldos_billetera').update({cajero_id,fecha,billetera_id,numero_turno,saldo_inicial,saldo_final}).eq('id',id);
+  if(error){alerta('Error: '+error.message,'err');return;}
+
+  await SB.rpc('recalcular_cruce_v5',{p_cajero_id:cajero_id,p_fecha:fecha,p_turno:numero_turno});
+  await SB.rpc('recalcular_todos_saldos');
+  closeModal('m-edit-saldo');
+  alerta('✓ Saldo actualizado');
+  adminCargarEditar();
+}
+
+async function eliminarSaldo(){
+  if(!confirm('¿Eliminar este saldo? No se puede deshacer.'))return;
+  const id=$('es-id').value;
+  await SB.from('saldos_billetera').delete().eq('id',id);
+  await SB.rpc('recalcular_todos_saldos');
+  closeModal('m-edit-saldo');
+  alerta('✓ Saldo eliminado');
+  adminCargarEditar();
+}
+
+// ── CRONOGRAMA ──
+const CRONO_COLORS = [
+  {bg:'rgba(74,222,128,.18)',text:'4ADE80'},
+  {bg:'rgba(56,189,248,.18)',text:'38BDF8'},
+  {bg:'rgba(251,146,60,.18)',text:'FB923C'},
+  {bg:'rgba(248,113,113,.18)',text:'F87171'},
+  {bg:'rgba(251,191,36,.18)',text:'FBBF24'},
+  {bg:'rgba(167,139,250,.18)',text:'A78BFA'},
+  {bg:'rgba(244,114,182,.18)',text:'F472B6'},
+  {bg:'rgba(34,211,238,.18)',text:'22D3EE'},
+];
+
+let _cronoFechaBase = new Date();
+
+function cronoLunesDeSemanaDe(d) {
+  const dt = new Date(d);
+  const day = dt.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  dt.setDate(dt.getDate() + diff);
+  dt.setHours(0,0,0,0);
+  return dt;
+}
+function cronoFmtFecha(d) {
+  return d.toLocaleDateString('es-AR',{weekday:'short',day:'2-digit',month:'2-digit'});
+}
+function cronoFmtISO(d) {
+  return d.toISOString().slice(0,10);
+}
+
+function cronoSemanaAnterior() { _cronoFechaBase.setDate(_cronoFechaBase.getDate()-7); initCronograma(); }
+function cronoSemanaSiguiente() { _cronoFechaBase.setDate(_cronoFechaBase.getDate()+7); initCronograma(); }
+function cronoHoy() { _cronoFechaBase = new Date(); initCronograma(); }
+
+async function initCronograma() {
+  const lunes = cronoLunesDeSemanaDe(_cronoFechaBase);
+  const domingo = new Date(lunes); domingo.setDate(lunes.getDate()+6);
+  const hoyISO = hoy();
+
+  // Título semana
+  const tit = $('crono-titulo');
+  tit.textContent = `${lunes.toLocaleDateString('es-AR',{day:'2-digit',month:'long'})} — ${domingo.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'})}`;
+
+  // Fechas de la semana
+  const dias = [];
+  for(let i=0;i<7;i++){const d=new Date(lunes);d.setDate(lunes.getDate()+i);dias.push(d);}
+
+  // Cargar turnos de la semana
+  const desde = cronoFmtISO(lunes);
+  const hasta = cronoFmtISO(domingo);
+  const {data:turnos} = await SB.from('turnos')
+    .select('id,cajero_id,fecha,numero_turno,cajeros(nombre)')
+    .gte('fecha',desde).lte('fecha',hasta)
+    .order('fecha').order('numero_turno');
+
+  // Mapa de cajeros → color
+  const colorMap = {};
+  let colorIdx = 0;
+  (turnos||[]).forEach(t => {
+    if(t.cajero_id && !colorMap[t.cajero_id]) {
+      colorMap[t.cajero_id] = { ...CRONO_COLORS[colorIdx % CRONO_COLORS.length], nombre: t.cajeros?.nombre||'—' };
+      colorIdx++;
+    }
+  });
+
+  // Leyenda
+  const ley = $('crono-leyenda');
+  ley.innerHTML = Object.entries(colorMap).map(([id,c]) =>
+    `<span class="crono-chip-legend" style="background:${c.bg};color:#${c.text}">${c.nombre}</span>`
+  ).join('') || `<span style="font-size:11px;color:var(--text3);font-family:var(--mono)">Sin turnos en esta semana</span>`;
+
+  // Organizar datos: { fecha: { turno: [cajeros] } }
+  const mapa = {};
+  (turnos||[]).forEach(t => {
+    if(!mapa[t.fecha]) mapa[t.fecha] = {1:[],2:[],3:[],4:[]};
+    if(!mapa[t.fecha][t.numero_turno]) mapa[t.fecha][t.numero_turno] = [];
+    mapa[t.fecha][t.numero_turno].push(t);
+  });
+
+  // Construir grilla HTML
+  const TURNOS_LABELS = {
+    1:'T1\n00–06',2:'T2\n06–12',3:'T3\n12–18',4:'T4\n18–00'
+  };
+  const TURNOS_COLORS = {1:C_CRONO.blue,2:C_CRONO.green,3:C_CRONO.orange,4:C_CRONO.purple};
+
+  // Calcular columnas: turno-label + 7 días
+  const totalCols = 8;
+  let html = `<div class="crono-grid" style="display:grid;grid-template-columns:80px repeat(7,1fr);">`;
+
+  // Fila header
+  html += `<div class="crono-header" style="border-top:none;"></div>`;
+  dias.forEach(d => {
+    const isHoy = cronoFmtISO(d)===hoyISO;
+    html += `<div class="crono-header" style="border-top:none;${isHoy?'color:var(--green);background:rgba(74,222,128,.06)':''}">${cronoFmtFecha(d).replace(',',' ')}</div>`;
+  });
+
+  // Filas por turno
+  [1,2,3,4].forEach(turno => {
+    const tColor = TURNOS_COLORS[turno];
+    // Label turno
+    html += `<div class="crono-turno-label"><span style="color:#${tColor};font-size:11px;font-weight:700">T${turno}</span><span style="font-size:8px;color:var(--text3);margin-top:2px">${['00–06','06–12','12–18','18–00'][turno-1]}</span></div>`;
+    // Celdas día
+    dias.forEach(d => {
+      const fechaISO = cronoFmtISO(d);
+      const isHoy = fechaISO===hoyISO;
+      const cajerosTurno = mapa[fechaISO]?.[turno]||[];
+      html += `<div class="crono-cell${isHoy?' hoy':''}">`;
+      if(cajerosTurno.length) {
+        cajerosTurno.forEach(t => {
+          const c = colorMap[t.cajero_id];
+          if(c) html += `<span class="crono-chip" style="background:${c.bg};color:#${c.text}">${c.nombre}</span>`;
+        });
+      } else {
+        html += `<span class="crono-empty">—</span>`;
+      }
+      html += `</div>`;
+    });
+  });
+
+  html += `</div>`;
+  $('crono-grid').innerHTML = html;
+}
+
+const C_CRONO = { blue:'38BDF8', green:'4ADE80', orange:'FB923C', purple:'A78BFA' };
+
+// ── INIT ──
+window.addEventListener('click',e=>{document.querySelectorAll('.ov').forEach(m=>{if(e.target===m)m.classList.remove('on');});});
+window.addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('screen-login').classList.contains('hidden'))doLogin();});
+(async()=>{const{data:{session}}=await SB.auth.getSession();if(session)await onLogin(session);})();
+</script>
+</body>
+</html>
