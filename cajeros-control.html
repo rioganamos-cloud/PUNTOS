@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -394,7 +393,10 @@ tr:hover td{background:rgba(255,255,255,.012);}
     <div class="section">
       <div class="sh">
         <div class="st">💰 Pagos de la semana</div>
-        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)">$17.858 por turno · se actualiza con el cronograma</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div style="font-size:10px;color:var(--text3);font-family:var(--mono)">$17.858 por turno · se actualiza con el cronograma</div>
+          <button class="btn btn-s sm" onclick="guardarPagosSemana()">💾 Guardar estados</button>
+        </div>
       </div>
       <div id="crono-pagos"></div>
     </div>
@@ -1259,6 +1261,31 @@ async function generarCierre(){
   const totExt=(ext||[]).reduce((a,e)=>a+Number(e.monto),0);
   const ok=(cr||[]).filter(x=>x.estado==='ok').length,disc=(cr||[]).filter(x=>x.estado==='discrepancia').length;
   const totVarBill=(saldos||[]).filter(s=>s.saldo_final!==null).reduce((a,s)=>a+(Number(s.saldo_final)-Number(s.saldo_inicial)),0);
+
+  // Sueldos del mes — solo días dentro del período
+  const {data:pagosDelMes} = await SB.from('pagos_sueldos')
+    .select('*,cajeros(nombre)')
+    .lte('semana_desde', hasta)
+    .gte('semana_hasta', desde);
+
+  // Para cada pago semanal, calcular cuántos días de esa semana caen en el mes
+  let totSueldosMes = 0;
+  const detalleSueldos = [];
+  (pagosDelMes||[]).forEach(p => {
+    const sdDesde = new Date(p.semana_desde+'T00:00:00');
+    const sdHasta = new Date(p.semana_hasta+'T00:00:00');
+    const mDesde = new Date(desde+'T00:00:00');
+    const mHasta = new Date(hasta+'T00:00:00');
+    // Intersección
+    const intDesde = sdDesde < mDesde ? mDesde : sdDesde;
+    const intHasta = sdHasta > mHasta ? mHasta : sdHasta;
+    const diasSemana = Math.round((sdHasta-sdDesde)/(1000*60*60*24))+1;
+    const diasEnMes = Math.round((intHasta-intDesde)/(1000*60*60*24))+1;
+    const proporcion = diasEnMes / diasSemana;
+    const montoProporcion = Math.round(p.monto_total * proporcion);
+    totSueldosMes += montoProporcion;
+    detalleSueldos.push({nombre:p.cajeros?.nombre||'—', turnos:p.turnos_trabajados, monto:p.monto_total, montoMes:montoProporcion, estado:p.estado, dias:`${diasEnMes}/${diasSemana}`, desde:p.semana_desde, hasta:p.semana_hasta});
+  });
   const blk=(title,color,headers,rows2)=>`<div style="border-radius:var(--r);border:1px solid var(--border);overflow:hidden;margin-bottom:14px;"><div style="background:var(--surface2);padding:10px 14px;font-family:var(--mono);font-size:9px;font-weight:600;color:${color};letter-spacing:2px;text-transform:uppercase;">${title}</div><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows2}</tbody></table></div>`;
   cont.innerHTML=`
     <div class="cards">
@@ -1268,7 +1295,27 @@ async function generarCierre(){
       <div class="card cr"><div class="clabel">Extracciones</div><div class="cval vr">-$${fmt(totExt)}</div></div>
       <div class="card cg"><div class="clabel">Cruces OK</div><div class="cval vg">${ok}</div></div>
       <div class="card cr"><div class="clabel">Discrepancias</div><div class="cval vr">${disc}</div></div>
+      <div class="card cy"><div class="clabel">Sueldos pagados mes</div><div class="cval vy">$${fmt(totSueldosMes)}</div></div>
     </div>
+    ${detalleSueldos.length ? `
+    <div style="border-radius:var(--r);border:1px solid var(--border);overflow:hidden;margin-bottom:14px;">
+      <div style="background:var(--surface2);padding:10px 14px;font-family:var(--mono);font-size:9px;font-weight:600;color:var(--yellow);letter-spacing:2px;text-transform:uppercase;">SUELDOS DEL MES (proporcional)</div>
+      <table><thead><tr><th>Cajero</th><th>Semana</th><th>Días en mes</th><th>Turnos</th><th>Monto semana</th><th>Monto en mes</th><th>Estado</th></tr></thead>
+      <tbody>${detalleSueldos.map(d=>`<tr>
+        <td style="font-weight:500">${d.nombre}</td>
+        <td class="tm" style="font-size:10px">${d.desde} → ${d.hasta}</td>
+        <td style="text-align:center;font-family:var(--mono);font-size:11px;color:var(--text3)">${d.dias}</td>
+        <td style="text-align:center;font-family:var(--mono);color:var(--blue)">${d.turnos}</td>
+        <td style="text-align:right;font-family:var(--mono)">$${fmt(d.monto)}</td>
+        <td style="text-align:right;font-family:var(--mono);font-weight:600;color:var(--yellow)">$${fmt(d.montoMes)}</td>
+        <td><span style="font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:4px;background:${d.estado==='pagado'?'rgba(74,222,128,.12)':'rgba(251,191,36,.12)'};color:${d.estado==='pagado'?'var(--green)':'var(--yellow)'}">${d.estado==='pagado'?'✅ Pagado':'⏳ Pendiente'}</span></td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr style="border-top:2px solid var(--border2)">
+        <td colspan="5" style="font-weight:700;font-family:var(--mono);font-size:11px;color:var(--text3);text-transform:uppercase">TOTAL SUELDOS DEL MES</td>
+        <td style="text-align:right;font-family:var(--mono);font-size:15px;font-weight:700;color:var(--yellow)">$${fmt(totSueldosMes)}</td>
+        <td></td>
+      </tr></tfoot></table>
+    </div>` : ''}
     ${blk('Por panel','var(--blue)',['Panel','Turnos','F.Ini','F.Fin','Bonificaciones','Resultado'],Object.entries(xP).map(([k,v])=>`<tr><td style="font-weight:500">${k}</td><td class="tm">${v.n}</td><td class="tm">${fmt(v.fi)}</td><td class="tm">${fmt(v.ff)}</td><td class="tm" style="color:var(--orange)">$${fmt(v.bon)}</td><td>${fmtRes(v.res)}</td></tr>`).join(''))}
     ${blk('Por cajero','var(--green)',['Cajero','Turnos','Bonificaciones','Resultado'],Object.entries(xC).map(([k,v])=>`<tr><td style="font-weight:500">${k}</td><td class="tm">${v.n}</td><td class="tm" style="color:var(--orange)">$${fmt(v.bon)}</td><td>${fmtRes(v.res)}</td></tr>`).join(''))}
     ${blk('Por turno','var(--purple)',['Turno','Registros','Bonificaciones','Resultado'],[1,2,3,4].filter(t=>xT[t].n>0).map(t=>`<tr><td>${tbadge(t)}</td><td class="tm">${xT[t].n}</td><td class="tm" style="color:var(--orange)">$${fmt(xT[t].bon)}</td><td>${fmtRes(xT[t].res)}</td></tr>`).join(''))}
@@ -1806,41 +1853,118 @@ async function initCronograma() {
   const totalGeneral = filasPago.reduce((a,f) => a + f.total, 0);
   const pctSemana = Math.round((totalTurnos / TURNOS_SEMANA_COMPLETA) * 100);
 
+  // Cargar pagos guardados para esta semana
+  const desdeISO = cronoFmtISO(lunes);
+  const {data:pagosSaved} = await SB.from('pagos_sueldos')
+    .select('*,cajeros(nombre)')
+    .eq('semana_desde', desdeISO);
+
+  const mapaEstados = {};
+  (pagosSaved||[]).forEach(p => {
+    mapaEstados[p.cajero_id] = { estado: p.estado, con_que: p.con_que_se_pago||'' };
+  });
+
+  // Obtener cajero_id por nombre
+  const mapaNombre = {};
+  (turnos||[]).forEach(t => {
+    if(t.cajeros?.nombre) mapaNombre[t.cajeros.nombre] = t.cajero_id;
+  });
+  // También buscar en _caj para cajeros sin turno esa semana
+  (_caj||[]).forEach(c => { if(!mapaNombre[c.nombre]) mapaNombre[c.nombre] = c.id; });
+
   $('crono-pagos').innerHTML = `
     <div class="tw">
       <table>
         <thead>
           <tr>
             <th>Cajero</th>
-            <th style="text-align:center">Turnos trabajados</th>
+            <th style="text-align:center">Turnos</th>
             <th style="text-align:right">Total a pagar</th>
+            <th style="text-align:center">Estado</th>
+            <th>Con qué se pagó</th>
           </tr>
         </thead>
         <tbody>
-          ${filasPago.map(f => `<tr>
-            <td style="font-weight:600">${f.nombre}</td>
-            <td style="text-align:center;font-family:var(--mono);font-size:14px;color:${f.cant>0?'var(--blue)':'var(--text3)'}">${f.cant}</td>
-            <td style="text-align:right;font-family:var(--mono);font-size:14px;font-weight:700;color:${f.cant>0?'var(--green)':'var(--text3)'}">
-              ${f.cant>0 ? '$'+Number(f.total).toLocaleString('es-AR') : '—'}
-            </td>
-          </tr>`).join('')}
+          ${filasPago.map(f => {
+            const cajId = mapaNombre[f.nombre] || '';
+            const saved = cajId ? (mapaEstados[cajId] || {}) : {};
+            const est = saved.estado || 'pendiente';
+            const conQue = saved.con_que || '';
+            return `<tr>
+              <td style="font-weight:600">${f.nombre}</td>
+              <td style="text-align:center;font-family:var(--mono);font-size:14px;color:${f.cant>0?'var(--blue)':'var(--text3)'}">${f.cant}</td>
+              <td style="text-align:right;font-family:var(--mono);font-size:14px;font-weight:700;color:${f.cant>0?'var(--green)':'var(--text3)'}">
+                ${f.cant>0 ? '$'+Number(f.total).toLocaleString('es-AR') : '—'}
+              </td>
+              <td style="text-align:center">
+                <select data-cajero="${cajId}" data-campo="estado"
+                  style="background:${est==='pagado'?'rgba(74,222,128,.1)':'rgba(251,191,36,.08)'};border:1px solid ${est==='pagado'?'var(--green)':'var(--yellow)'};color:${est==='pagado'?'var(--green)':'var(--yellow)'};font-family:var(--mono);font-size:11px;padding:4px 8px;border-radius:5px;outline:none;cursor:pointer;"
+                  onchange="this.style.background=this.value==='pagado'?'rgba(74,222,128,.1)':'rgba(251,191,36,.08)';this.style.borderColor=this.value==='pagado'?'var(--green)':'var(--yellow)';this.style.color=this.value==='pagado'?'var(--green)':'var(--yellow)'">
+                  <option value="pendiente" ${est==='pendiente'?'selected':''}>⏳ Pendiente</option>
+                  <option value="pagado" ${est==='pagado'?'selected':''}>✅ Pagado</option>
+                </select>
+              </td>
+              <td>
+                <input type="text" data-cajero="${cajId}" data-campo="con_que"
+                  value="${conQue}"
+                  placeholder="Ej: Brubank, efectivo..."
+                  style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:12px;padding:5px 9px;border-radius:5px;outline:none;width:100%;min-width:140px;">
+              </td>
+            </tr>`;
+          }).join('')}
         </tbody>
         <tfoot>
           <tr style="border-top:2px solid var(--border2)">
             <td style="font-weight:700;font-family:var(--mono);font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">
               TOTAL SEMANA
-              <span style="font-weight:400;color:var(--text3);margin-left:6px">(${totalTurnos}/${TURNOS_SEMANA_COMPLETA} turnos · ${pctSemana}%)</span>
+              <span style="font-weight:400;color:var(--text3);margin-left:6px">(${totalTurnos}/${TURNOS_SEMANA_COMPLETA} · ${pctSemana}%)</span>
             </td>
             <td style="text-align:center;font-family:var(--mono);font-weight:700;color:var(--blue)">${totalTurnos}</td>
             <td style="text-align:right;font-family:var(--mono);font-size:16px;font-weight:700;color:var(--yellow)">
               $${Number(totalGeneral).toLocaleString('es-AR')}
               <span style="display:block;font-size:9px;color:var(--text3);font-weight:400">de $${Number(TOTAL_SEMANA_COMPLETA).toLocaleString('es-AR')} semana completa</span>
             </td>
+            <td colspan="2"></td>
           </tr>
         </tfoot>
       </table>
     </div>
   `;
+
+  // Guardar referencia de la semana actual para el guardado
+  window._cronoSemanaDesde = desdeISO;
+  window._cronoSemanaHasta = cronoFmtISO(domingo);
+  window._cronoPagosFila = filasPago.map(f => ({...f, cajero_id: mapaNombre[f.nombre]||null}));
+}
+
+async function guardarPagosSemana(){
+  const desde = window._cronoSemanaDesde;
+  const hasta = window._cronoSemanaHasta;
+  if(!desde){alerta('Primero cargá el cronograma','err');return;}
+
+  const selects = document.querySelectorAll('[data-campo="estado"]');
+  const inputs = document.querySelectorAll('[data-campo="con_que"]');
+
+  const mapaEst = {}, mapaConQue = {};
+  selects.forEach(s => { if(s.dataset.cajero) mapaEst[s.dataset.cajero] = s.value; });
+  inputs.forEach(i => { if(i.dataset.cajero) mapaConQue[i.dataset.cajero] = i.value; });
+
+  for(const f of (window._cronoPagosFila||[])){
+    if(!f.cajero_id) continue;
+    const estado = mapaEst[f.cajero_id] || 'pendiente';
+    const con_que_se_pago = mapaConQue[f.cajero_id] || null;
+    await SB.from('pagos_sueldos').upsert({
+      cajero_id: f.cajero_id,
+      semana_desde: desde,
+      semana_hasta: hasta,
+      turnos_trabajados: f.cant,
+      monto_total: f.total,
+      estado,
+      con_que_se_pago,
+      updated_at: new Date().toISOString()
+    }, {onConflict:'cajero_id,semana_desde'});
+  }
+  alerta('✓ Estados de pago guardados');
 }
 
 const C_CRONO = { blue:'38BDF8', green:'4ADE80', orange:'FB923C', purple:'A78BFA' };
