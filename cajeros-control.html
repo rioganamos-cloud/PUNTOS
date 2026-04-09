@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -388,6 +389,14 @@ tr:hover td{background:rgba(255,255,255,.012);}
       <div style="overflow-x:auto;">
         <div id="crono-grid"></div>
       </div>
+    </div>
+    <!-- Resumen de pagos semanales -->
+    <div class="section">
+      <div class="sh">
+        <div class="st">💰 Pagos de la semana</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--mono)">$17.858 por turno · se actualiza con el cronograma</div>
+      </div>
+      <div id="crono-pagos"></div>
     </div>
   </div>
 
@@ -975,7 +984,7 @@ async function adminBilleteras(){
   if(!_bill.length)tb.innerHTML=`<tr><td colspan="5"><div class="empty">Sin billeteras. Creá una con "+ Nueva".</div></td></tr>`;
   else tb.innerHTML=_bill.map(b=>{
     const saldo=Number(b.saldo_actual||0);
-    const color=saldo>0?'var(--green)':saldo<0?'var(--red)":'var(--text2)';
+    const color=saldo>0?'var(--green)':saldo<0?'var(--red)':'var(--text2)';
     const signo=saldo>0?'+':'';
     const ult=mapaUlt[b.id];
     const ultInfo=ult
@@ -1769,6 +1778,69 @@ async function initCronograma() {
 
   html += `</div>`;
   $('crono-grid').innerHTML = html;
+
+  // ── Calcular pagos semanales ──
+  const VALOR_TURNO = 17858;
+  const TURNOS_SEMANA_COMPLETA = 28; // 4 turnos x 7 dias
+  const TOTAL_SEMANA_COMPLETA = VALOR_TURNO * TURNOS_SEMANA_COMPLETA; // 500.024
+  const CAJEROS_PAGO = ['Tamara','Tati','Brenda','Keila','Joel'];
+
+  // Contar turnos por cajero — un cajero puede tener T1 y T4 el mismo dia = 2 turnos
+  const pagos = {};
+  CAJEROS_PAGO.forEach(n => pagos[n] = 0);
+  (turnos||[]).forEach(t => {
+    const nombre = t.cajeros?.nombre;
+    if(nombre && pagos.hasOwnProperty(nombre)) {
+      pagos[nombre]++;
+    }
+  });
+
+  // Renderizar tabla de pagos
+  const filasPago = CAJEROS_PAGO.map(nombre => {
+    const cant = pagos[nombre] || 0;
+    const total = cant * VALOR_TURNO;
+    return { nombre, cant, total };
+  });
+
+  const totalTurnos = filasPago.reduce((a,f) => a + f.cant, 0);
+  const totalGeneral = filasPago.reduce((a,f) => a + f.total, 0);
+  const pctSemana = Math.round((totalTurnos / TURNOS_SEMANA_COMPLETA) * 100);
+
+  $('crono-pagos').innerHTML = `
+    <div class="tw">
+      <table>
+        <thead>
+          <tr>
+            <th>Cajero</th>
+            <th style="text-align:center">Turnos trabajados</th>
+            <th style="text-align:right">Total a pagar</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filasPago.map(f => `<tr>
+            <td style="font-weight:600">${f.nombre}</td>
+            <td style="text-align:center;font-family:var(--mono);font-size:14px;color:${f.cant>0?'var(--blue)':'var(--text3)'}">${f.cant}</td>
+            <td style="text-align:right;font-family:var(--mono);font-size:14px;font-weight:700;color:${f.cant>0?'var(--green)':'var(--text3)'}">
+              ${f.cant>0 ? '$'+Number(f.total).toLocaleString('es-AR') : '—'}
+            </td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="border-top:2px solid var(--border2)">
+            <td style="font-weight:700;font-family:var(--mono);font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">
+              TOTAL SEMANA
+              <span style="font-weight:400;color:var(--text3);margin-left:6px">(${totalTurnos}/${TURNOS_SEMANA_COMPLETA} turnos · ${pctSemana}%)</span>
+            </td>
+            <td style="text-align:center;font-family:var(--mono);font-weight:700;color:var(--blue)">${totalTurnos}</td>
+            <td style="text-align:right;font-family:var(--mono);font-size:16px;font-weight:700;color:var(--yellow)">
+              $${Number(totalGeneral).toLocaleString('es-AR')}
+              <span style="display:block;font-size:9px;color:var(--text3);font-weight:400">de $${Number(TOTAL_SEMANA_COMPLETA).toLocaleString('es-AR')} semana completa</span>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
 }
 
 const C_CRONO = { blue:'38BDF8', green:'4ADE80', orange:'FB923C', purple:'A78BFA' };
