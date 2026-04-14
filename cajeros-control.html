@@ -299,7 +299,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
         <div class="st">Billeteras</div>
         <button class="btn sm" onclick="openModal('m-bill')">+ Nueva</button>
       </div>
-      <div class="tw" style="margin-bottom:20px;"><table><thead><tr><th>Billetera</th><th>Saldo actual</th><th>Acciones</th></tr></thead><tbody id="a-tb-bill"></tbody></table></div>
+      <div class="tw" style="margin-bottom:20px;"><table><thead><tr><th>Billetera</th><th>Saldo real (cajero)</th><th id="th-esperada">Billetera esperada</th><th>Diferencia</th><th>Acciones</th></tr></thead><tbody id="a-tb-bill"></tbody></table></div>
       <div class="st" style="margin-bottom:12px">Detalle por billetera</div>
       <div class="filtros">
         <select id="f-bill-sel" onchange="loadDetalleBill()"><option value="">Seleccioná billetera...</option></select>
@@ -965,9 +965,13 @@ async function adminTurnos(){
 async function adminBilleteras(){
   // Recalcular saldos automáticamente al entrar
   await SB.rpc('recalcular_todos_saldos');
-  // Recargar billeteras con saldos actualizados
+  // Recargar billeteras DESPUÉS del recálculo para tener datos frescos
   const{data:bills}=await SB.from('billeteras').select('*').order('nombre');
   _bill=bills||[];
+  // Forzar recarga del cache de Supabase
+  await new Promise(r=>setTimeout(r,200));
+  const{data:billsFresh}=await SB.from('billeteras').select('*').order('nombre');
+  _bill=billsFresh||[];
 
   // Obtener último saldo final cargado por cada billetera
   const{data:ultSaldos}=await SB.from('saldos_billetera')
@@ -976,31 +980,92 @@ async function adminBilleteras(){
     .order('fecha',{ascending:false})
     .order('created_at',{ascending:false});
 
-  // Mapa: billetera_id → último registro
   const mapaUlt={};
   (ultSaldos||[]).forEach(s=>{
     if(!mapaUlt[s.billetera_id]) mapaUlt[s.billetera_id]=s;
   });
 
+  // Billetera esperada = saldo_inicial + ventas del mes (fichas sin bonif) - extracciones del mes
+  const now = new Date();
+  const mesDesde = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const mesHasta = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${new Date(now.getFullYear(),now.getMonth()+1,0).getDate()}`;
+  const mesLabel = now.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+
+  // Fichas del mes por billetera — traer todos los turno_panel del mes usando turnos como filtro
+  const{data:turnosMes}=await SB.from('turnos')
+    .select('id')
+    .gte('fecha', mesDesde)
+    .lte('fecha', mesHasta);
+
+  const turnoIdsMes = (turnosMes||[]).map(t=>t.id);
+
+  let tpData = [];
+  if(turnoIdsMes.length > 0){
+    const{data:tp}=await SB.from('turno_panel')
+      .select('billetera_id,fichas_iniciales,fichas_finales,bonificaciones')
+      .in('turno_id', turnoIdsMes)
+      .not('billetera_id','is',null);
+    tpData = tp||[];
+  }
+
+  // Extracciones del mes por billetera
+  const{data:extData}=await SB.from('extracciones_v2')
+    .select('billetera_id,monto')
+    .not('billetera_id','is',null)
+    .gte('fecha', mesDesde)
+    .lte('fecha', mesHasta);
+
+  // Mapa resultado fichas del mes por billetera
+  const mapaFichas={};
+  tpData.forEach(tp=>{
+    if(!tp.billetera_id) return;
+    if(!mapaFichas[tp.billetera_id]) mapaFichas[tp.billetera_id]=0;
+    mapaFichas[tp.billetera_id] += Number(tp.fichas_iniciales||0) - Number(tp.fichas_finales||0) - Number(tp.bonificaciones||0);
+  });
+
+  // Mapa extracciones del mes por billetera
+  const mapaExt={};
+  (extData||[]).forEach(e=>{
+    if(!mapaExt[e.billetera_id]) mapaExt[e.billetera_id]=0;
+    mapaExt[e.billetera_id] += Number(e.monto||0);
+  });
+
   const tb=$('a-tb-bill');
-  if(!_bill.length)tb.innerHTML=`<tr><td colspan="5"><div class="empty">Sin billeteras. Creá una con "+ Nueva".</div></td></tr>`;
+  if(!_bill.length)tb.innerHTML=`<tr><td colspan="7"><div class="empty">Sin billeteras. Creá una con "+ Nueva".</div></td></tr>`;
   else tb.innerHTML=_bill.map(b=>{
-    const saldo=Number(b.saldo_actual||0);
-    const color=saldo>0?'var(--green)':saldo<0?'var(--red)':'var(--text2)';
-    const signo=saldo>0?'+':'';
+    const saldoReal=Number(b.saldo_actual||0);
+    const saldoIni=Number(b.saldo_inicial||0);
+    const resFichas=mapaFichas[b.id]||0;
+    const extTotal=mapaExt[b.id]||0;
+    const esperado=saldoIni + resFichas - extTotal;
+    const dif=saldoReal - esperado;
+
+    const colorReal=saldoReal>0?'var(--green)':saldoReal<0?'var(--red)':'var(--text2)';
+    const colorEsp=esperado>0?'var(--blue)':esperado<0?'var(--red)':'var(--text2)';
+    const colorDif=Math.abs(dif)<1?'var(--green)':dif>0?'var(--orange)':'var(--red)';
     const ult=mapaUlt[b.id];
     const ultInfo=ult
       ? `<span style="font-size:9px;color:var(--text3);font-family:var(--mono);display:block;margin-top:2px">Último: ${ult.fecha} T${ult.numero_turno} · ${ult.cajeros?.nombre||'—'}</span>`
-      : `<span style="font-size:9px;color:var(--text3);font-family:var(--mono);display:block;margin-top:2px">Sin saldos cargados aún</span>`;
+      : `<span style="font-size:9px;color:var(--text3);font-family:var(--mono);display:block;margin-top:2px">Sin saldos cargados</span>`;
+
     return`<tr>
       <td style="font-weight:500">${b.nombre}<br><span style="font-size:10px;color:var(--text3)">${b.plataforma||'—'}</span></td>
       <td>
-        <span style="font-family:var(--mono);font-weight:700;font-size:16px;color:${color}">${signo}$${fmt(saldo)}</span>
+        <span style="font-family:var(--mono);font-weight:700;font-size:15px;color:${colorReal}">${saldoReal>=0?'+':''}$${fmt(saldoReal)}</span>
         ${ultInfo}
       </td>
       <td>
+        <span style="font-family:var(--mono);font-weight:700;font-size:15px;color:${colorEsp}">${esperado>=0?'+':''}$${fmt(esperado)}</span>
+        <span style="font-size:9px;color:var(--text3);font-family:var(--mono);display:block;margin-top:2px">${mesLabel} · ini $${fmt(saldoIni)} + fichas $${fmt(resFichas)} − ext $${fmt(extTotal)}</span>
+      </td>
+      <td>
+        <span style="font-family:var(--mono);font-weight:700;font-size:14px;color:${colorDif}">${dif>=0?'+':''}$${fmt(dif)}</span>
+        ${Math.abs(dif)<1?`<span style="font-size:9px;color:var(--green);font-family:var(--mono);display:block">✔ coincide</span>`:
+          `<span style="font-size:9px;color:var(--orange);font-family:var(--mono);display:block">revisar</span>`}
+      </td>
+      <td>
         <button class="btn btn-s sm" onclick="loadDetalleBill('${b.id}')">Ver detalle</button>
-        <button class="btn btn-y sm" onclick="abrirAjuste('${b.id}','${b.nombre}',${saldo})">Ajustar saldo</button>
+        <button class="btn btn-y sm" onclick="abrirAjuste('${b.id}','${b.nombre}',${saldoReal})">Ajustar saldo</button>
         <button class="btn btn-r sm" onclick="delBill('${b.id}')">Eliminar</button>
       </td>
     </tr>`;
