@@ -1897,12 +1897,19 @@ async function initCronograma() {
   const TOTAL_SEMANA_COMPLETA = VALOR_TURNO * TURNOS_SEMANA_COMPLETA; // 500.024
   const CAJEROS_PAGO = ['Tamara','Tati','Brenda','Keila','Joel'];
 
-  // Contar turnos por cajero — un cajero puede tener T1 y T4 el mismo dia = 2 turnos
+  // Contar turnos por cajero agrupando por cajero+fecha+numero_turno
+  // Evita contar dos veces el mismo turno si tiene dos paneles cargados
   const pagos = {};
   CAJEROS_PAGO.forEach(n => pagos[n] = 0);
+
+  // Usar un Set para deduplicar por cajero_id + fecha + numero_turno
+  const turnosUnicos = new Set();
   (turnos||[]).forEach(t => {
     const nombre = t.cajeros?.nombre;
-    if(nombre && pagos.hasOwnProperty(nombre)) {
+    if(!nombre || !pagos.hasOwnProperty(nombre)) return;
+    const clave = `${t.cajero_id}|${t.fecha}|${t.numero_turno}`;
+    if(!turnosUnicos.has(clave)){
+      turnosUnicos.add(clave);
       pagos[nombre]++;
     }
   });
