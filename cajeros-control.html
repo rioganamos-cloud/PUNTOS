@@ -749,7 +749,8 @@ let _session=null,_perfil=null,_caj=[],_bill=[],_pan=[],_pidx=0,_prows=[],_sidx=
 const $=id=>document.getElementById(id);
 const hoy=()=>new Date().toISOString().slice(0,10);
 const fmt=n=>Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:2});
-const resBil=(fi,ff)=>Number(fi)-Number(ff);
+const resBil=(fi,ff)=>Number(fi)-Number(ff); // efecto billetera: ini-fin SIN bonificaciones
+const resFichas=(fi,ff,bon)=>Number(fi)-Number(ff)-Number(bon||0); // resultado fichas CON bonificaciones (para cruces)
 function fmtRes(v){
   if(v>0)return`<span class="monto-p">+$${fmt(v)}</span>`;
   if(v<0)return`<span class="monto-n">-$${fmt(Math.abs(v))}</span>`;
@@ -962,90 +963,120 @@ async function adminTurnos(){
   </tr>`;}).join('');
 }
 
+// ─── FUNCIÓN CENTRAL: calcula saldo real y esperado desde datos fuente ───
+// Reconstruye TODO desde datos crudos, sin depender de valores guardados en BD
+// saldoReal     = último saldo_final cargado manualmente por el cajero
+// saldoEsperado = saldo_base + SUM(variaciones del mes) - SUM(extracciones del mes)
+// variación     = saldo_final - saldo_inicial (de saldos_billetera, NO de fichas)
+// bonificaciones: NO afectan billetera
+// ─── FUNCIÓN CENTRAL DE BILLETERA ───
+// Saldo esperado = saldo_base + SUM(ventas netas de fichas) - SUM(extracciones)
+// Ventas netas = fichas_iniciales - fichas_finales - bonificaciones
+//   positivo → vendió fichas → entra dinero
+//   negativo → pagó premios  → sale dinero
+// Extracciones → siempre restan
+// Saldo real    → último saldo_final cargado por el cajero
+function calcularSaldoBilletera(billId, saldoBase, todosTurnos, todasExtracciones, mesDesde, mesHasta) {
+  // Filtrar solo esta billetera
+  const turnosBill = todosTurnos.filter(t => t.billetera_id === billId);
+  const extsBill   = todasExtracciones.filter(e => e.billetera_id === billId);
+
+  // --- SALDO REAL: último saldo_final cargado manualmente por el cajero ---
+  const saldosBill = turnosBill.filter(t => t.saldo_final !== null);
+  const sorted = [...saldosBill].sort((a,b) => {
+    if(a.fecha > b.fecha) return -1;
+    if(a.fecha < b.fecha) return 1;
+    return (b.created_at||'') > (a.created_at||'') ? 1 : -1;
+  });
+  const tieneSaldos = sorted.length > 0;
+  const saldoReal   = tieneSaldos ? Number(sorted[0].saldo_final) : Number(saldoBase);
+  const ultReg      = tieneSaldos ? sorted[0] : null;
+
+  // --- SALDO ESPERADO: acumulativo desde saldo_base ---
+  // Ventas netas del mes = SUM(fichas_ini - fichas_fin - bonif) de turno_panel
+  const ventasNetas = turnosBill
+    .filter(t => t.fecha >= mesDesde && t.fecha <= mesHasta)
+    .reduce((acc, t) => acc + (Number(t.fichas_iniciales||0) - Number(t.fichas_finales||0) - Number(t.bonificaciones||0)), 0);
+
+  // Extracciones del mes
+  const extMes = extsBill
+    .filter(e => e.fecha >= mesDesde && e.fecha <= mesHasta)
+    .reduce((acc, e) => acc + Number(e.monto||0), 0);
+
+  // Extracciones totales (para billeteras sin saldos cargados)
+  const extTotal = extsBill.reduce((acc, e) => acc + Number(e.monto||0), 0);
+
+  // Esperado = saldo_base + ventas_netas_mes - extracciones_mes
+  const saldoEsperado = Number(saldoBase) + ventasNetas - extMes;
+
+  // Para billeteras sin saldos cargados, el real también viene de la fórmula
+  const saldoRealFinal = tieneSaldos ? saldoReal : Math.max(0, Number(saldoBase) - extTotal);
+
+  return { saldoReal: saldoRealFinal, saldoEsperado, ventasNetas, extMes, extTotal, ultReg, tieneSaldos };
+}
+
 async function adminBilleteras(){
-  // Recalcular saldos automáticamente al entrar
-  await SB.rpc('recalcular_todos_saldos');
-  // Recargar billeteras DESPUÉS del recálculo para tener datos frescos
+  // Cargar billeteras
   const{data:bills}=await SB.from('billeteras').select('*').order('nombre');
   _bill=bills||[];
-  // Forzar recarga del cache de Supabase
-  await new Promise(r=>setTimeout(r,200));
-  const{data:billsFresh}=await SB.from('billeteras').select('*').order('nombre');
-  _bill=billsFresh||[];
 
-  // Obtener último saldo final cargado por cada billetera
-  const{data:ultSaldos}=await SB.from('saldos_billetera')
-    .select('billetera_id,saldo_final,fecha,numero_turno,cajeros(nombre)')
-    .not('saldo_final','is',null)
-    .order('fecha',{ascending:false})
-    .order('created_at',{ascending:false});
-
-  const mapaUlt={};
-  (ultSaldos||[]).forEach(s=>{
-    if(!mapaUlt[s.billetera_id]) mapaUlt[s.billetera_id]=s;
-  });
-
-  // Billetera esperada = saldo_inicial + ventas del mes (fichas sin bonif) - extracciones del mes
   const now = new Date();
   const mesDesde = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
   const mesHasta = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${new Date(now.getFullYear(),now.getMonth()+1,0).getDate()}`;
   const mesLabel = now.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
 
-  // Fichas del mes por billetera — traer todos los turno_panel del mes usando turnos como filtro
+  // Cargar saldos_billetera (para saldo_real)
+  const{data:todosSaldosBill}=await SB.from('saldos_billetera')
+    .select('billetera_id,saldo_inicial,saldo_final,fecha,numero_turno,cajero_id,created_at,cajeros(nombre)')
+    .not('saldo_final','is',null)
+    .order('fecha',{ascending:false})
+    .order('created_at',{ascending:false});
+
+  // Cargar turno_panel del mes (para ventas netas de fichas)
   const{data:turnosMes}=await SB.from('turnos')
     .select('id')
     .gte('fecha', mesDesde)
     .lte('fecha', mesHasta);
-
-  const turnoIdsMes = (turnosMes||[]).map(t=>t.id);
-
-  let tpData = [];
-  if(turnoIdsMes.length > 0){
+  const turnoIdsMes=(turnosMes||[]).map(t=>t.id);
+  let tpMes=[];
+  if(turnoIdsMes.length>0){
     const{data:tp}=await SB.from('turno_panel')
-      .select('billetera_id,fichas_iniciales,fichas_finales,bonificaciones')
+      .select('billetera_id,fichas_iniciales,fichas_finales,bonificaciones,turnos!inner(fecha)')
       .in('turno_id', turnoIdsMes)
       .not('billetera_id','is',null);
-    tpData = tp||[];
+    // Aplanar: agregar fecha al registro
+    tpMes=(tp||[]).map(r=>({...r, fecha:r.turnos?.fecha||''}));
   }
 
-  // Extracciones del mes por billetera
-  const{data:extData}=await SB.from('extracciones_v2')
-    .select('billetera_id,monto')
-    .not('billetera_id','is',null)
-    .gte('fecha', mesDesde)
-    .lte('fecha', mesHasta);
+  // Combinar saldos + fichas en un solo array por billetera para la función
+  // Los saldos aportan saldo_real, las fichas aportan ventas netas
+  const todosTurnos=[
+    ...(todosSaldosBill||[]),
+    ...tpMes
+  ];
 
-  // Mapa resultado fichas del mes por billetera
-  const mapaFichas={};
-  tpData.forEach(tp=>{
-    if(!tp.billetera_id) return;
-    if(!mapaFichas[tp.billetera_id]) mapaFichas[tp.billetera_id]=0;
-    mapaFichas[tp.billetera_id] += Number(tp.fichas_iniciales||0) - Number(tp.fichas_finales||0) - Number(tp.bonificaciones||0);
-  });
-
-  // Mapa extracciones del mes por billetera
-  const mapaExt={};
-  (extData||[]).forEach(e=>{
-    if(!mapaExt[e.billetera_id]) mapaExt[e.billetera_id]=0;
-    mapaExt[e.billetera_id] += Number(e.monto||0);
-  });
+  // Cargar TODAS las extracciones
+  const{data:todasExts}=await SB.from('extracciones_v2')
+    .select('billetera_id,monto,fecha')
+    .not('billetera_id','is',null);
 
   const tb=$('a-tb-bill');
-  if(!_bill.length)tb.innerHTML=`<tr><td colspan="7"><div class="empty">Sin billeteras. Creá una con "+ Nueva".</div></td></tr>`;
-  else tb.innerHTML=_bill.map(b=>{
-    const saldoReal=Number(b.saldo_actual||0);
-    const saldoIni=Number(b.saldo_inicial||0);
-    const resFichas=mapaFichas[b.id]||0;
-    const extTotal=mapaExt[b.id]||0;
-    const esperado=saldoIni + resFichas - extTotal;
-    const dif=saldoReal - esperado;
+  if(!_bill.length){
+    tb.innerHTML=`<tr><td colspan="5"><div class="empty">Sin billeteras. Creá una con "+ Nueva".</div></td></tr>`;
+    return;
+  }
 
-    const colorReal=saldoReal>0?'var(--green)':saldoReal<0?'var(--red)':'var(--text2)';
-    const colorEsp=esperado>0?'var(--blue)':esperado<0?'var(--red)':'var(--text2)';
-    const colorDif=Math.abs(dif)<1?'var(--green)':dif>0?'var(--orange)':'var(--red)';
-    const ult=mapaUlt[b.id];
-    const ultInfo=ult
-      ? `<span style="font-size:9px;color:var(--text3);font-family:var(--mono);display:block;margin-top:2px">Último: ${ult.fecha} T${ult.numero_turno} · ${ult.cajeros?.nombre||'—'}</span>`
+  tb.innerHTML=_bill.map(b=>{
+    const {saldoReal, saldoEsperado, ventasNetas, extMes, extTotal, ultReg, tieneSaldos} =
+      calcularSaldoBilletera(b.id, Number(b.saldo_inicial||0), todosTurnos||[], todasExts||[], mesDesde, mesHasta);
+
+    const dif = saldoReal - saldoEsperado;
+    const colorReal = saldoReal>0?'var(--green)':saldoReal<0?'var(--red)':'var(--text2)';
+    const colorEsp  = saldoEsperado>0?'var(--blue)':saldoEsperado<0?'var(--red)':'var(--text2)';
+    const colorDif  = Math.abs(dif)<100?'var(--green)':dif>0?'var(--orange)':'var(--red)';
+
+    const ultInfo = ultReg
+      ? `<span style="font-size:9px;color:var(--text3);font-family:var(--mono);display:block;margin-top:2px">Último: ${ultReg.fecha} T${ultReg.numero_turno} · ${ultReg.cajeros?.nombre||'—'}</span>`
       : `<span style="font-size:9px;color:var(--text3);font-family:var(--mono);display:block;margin-top:2px">Sin saldos cargados</span>`;
 
     return`<tr>
@@ -1055,13 +1086,16 @@ async function adminBilleteras(){
         ${ultInfo}
       </td>
       <td>
-        <span style="font-family:var(--mono);font-weight:700;font-size:15px;color:${colorEsp}">${esperado>=0?'+':''}$${fmt(esperado)}</span>
-        <span style="font-size:9px;color:var(--text3);font-family:var(--mono);display:block;margin-top:2px">${mesLabel} · ini $${fmt(saldoIni)} + fichas $${fmt(resFichas)} − ext $${fmt(extTotal)}</span>
+        <span style="font-family:var(--mono);font-weight:700;font-size:15px;color:${colorEsp}">${saldoEsperado>=0?'+':''}$${fmt(saldoEsperado)}</span>
+        <span style="font-size:9px;color:var(--text3);font-family:var(--mono);display:block;margin-top:2px">
+          ${mesLabel} · ventas $${fmt(ventasNetas)} − ext $${fmt(extMes)}
+        </span>
       </td>
       <td>
         <span style="font-family:var(--mono);font-weight:700;font-size:14px;color:${colorDif}">${dif>=0?'+':''}$${fmt(dif)}</span>
-        ${Math.abs(dif)<1?`<span style="font-size:9px;color:var(--green);font-family:var(--mono);display:block">✔ coincide</span>`:
-          `<span style="font-size:9px;color:var(--orange);font-family:var(--mono);display:block">revisar</span>`}
+        ${Math.abs(dif)<100
+          ?`<span style="font-size:9px;color:var(--green);font-family:var(--mono);display:block">✔ coincide</span>`
+          :`<span style="font-size:9px;color:var(--orange);font-family:var(--mono);display:block">revisar</span>`}
       </td>
       <td>
         <button class="btn btn-s sm" onclick="loadDetalleBill('${b.id}')">Ver detalle</button>
@@ -1070,6 +1104,7 @@ async function adminBilleteras(){
       </td>
     </tr>`;
   }).join('');
+
   fillSel('f-bill-sel',_bill,b=>b.nombre,b=>b.id,'Seleccioná billetera...');
   fillSel('f-bill-caj',_caj,c=>c.nombre,c=>c.id,'Todos los cajeros');
 }
@@ -1454,7 +1489,7 @@ function addCajeroPanel(){
 }
 function rmCajeroPanel(idx){$(`cpr${idx}`)?.remove();_prows=_prows.filter(i=>i!==idx);}
 function actualizarTurnoBadge(){}
-function cajPrev(idx){const fi=parseFloat($(`cpfi${idx}`)?.value)||0,ff=parseFloat($(`cpff${idx}`)?.value)||0,res=resBil(fi,ff),el=$(`cpv${idx}`);if(!el)return;el.style.display='block';if(res>0){el.className='prev prev-ok';el.textContent=`✔ +$${fmt(res)} (bajaron fichas)`;}else if(res<0){el.className='prev prev-no';el.textContent=`✖ -$${fmt(Math.abs(res))} (subieron fichas)`;}else{el.className='prev prev-ok';el.textContent='$0.00';}}
+function cajPrev(idx){const fi=parseFloat($(`cpfi${idx}`)?.value)||0,ff=parseFloat($(`cpff${idx}`)?.value)||0,res=resBil(fi,ff),el=$(`cpv${idx}`);if(!el)return;el.style.display='block';if(res>0){el.className='prev prev-ok';el.textContent=`✔ +$${fmt(res)} (vendiste fichas → entra dinero)`;}else if(res<0){el.className='prev prev-no';el.textContent=`✖ -$${fmt(Math.abs(res))} (pagaste premios → sale dinero)`;}else{el.className='prev prev-ok';el.textContent='$0.00';}}
 
 async function cajeroGuardarTurno(){
   const cajId=_perfil?.cajero_id;if(!cajId){alerta('Error: sin cajero','err');return;}
