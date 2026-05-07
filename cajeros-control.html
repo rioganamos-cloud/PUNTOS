@@ -416,6 +416,17 @@ tr:hover td{background:rgba(255,255,255,.012);}
     </div>
   </div>
 
+  <!-- ═══ ADMIN: ALERTAS ═══ -->
+  <div id="tab-a-alertas" class="tab">
+    <div class="section">
+      <div class="sh">
+        <div class="st">🔔 Alertas de diferencias</div>
+        <div style="font-size:10px;color:var(--text3)">Se generan automáticamente cuando el saldo real difiere más de $5.000 del esperado</div>
+      </div>
+      <div id="alertas-lista"></div>
+    </div>
+  </div>
+
   <!-- ═══ ADMIN: CONFIG ═══ -->
   <div id="tab-a-config" class="tab">
     <div class="section">
@@ -427,6 +438,37 @@ tr:hover td{background:rgba(255,255,255,.012);}
           <span class="hint">Diferencia máxima entre resultado de fichas y variación de billetera para marcar como "tolerancia".</span>
         </div>
         <button class="btn" onclick="guardarConfig()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CAJERO: ALERTAS PENDIENTES ═══ -->
+  <div id="cajero-alertas" style="display:none;margin:0 0 14px 0;"></div>
+
+  <!-- Modal edición de error cajero -->
+  <div id="ov-editar-error" class="ov">
+    <div class="modal" style="max-width:480px">
+      <div class="mh"><div class="mt">✏️ Corregir error</div><button class="close" onclick="$('ov-editar-error').classList.remove('on')">✕</button></div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+        <div style="background:var(--surface2);border-radius:8px;padding:12px;font-size:13px;color:var(--text2)" id="ee-descripcion"></div>
+        <div class="fg"><label class="fl">Fecha del turno</label><input type="date" id="ee-fecha" class="fi"></div>
+        <div class="fg"><label class="fl">Turno</label>
+          <select id="ee-turno" class="fi">
+            <option value="1">T1 — 00:00 a 06:00</option>
+            <option value="2">T2 — 06:01 a 12:00</option>
+            <option value="3">T3 — 12:01 a 18:00</option>
+            <option value="4">T4 — 18:01 a 00:00</option>
+          </select>
+        </div>
+        <div class="fg"><label class="fl">Billetera</label>
+          <select id="ee-billetera" class="fi"></select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="fg"><label class="fl">Saldo inicial</label><input type="number" id="ee-saldo-ini" class="fi" placeholder="0"></div>
+          <div class="fg"><label class="fl">Saldo final</label><input type="number" id="ee-saldo-fin" class="fi" placeholder="0"></div>
+        </div>
+        <div class="fg"><label class="fl">Motivo de la corrección</label><input type="text" id="ee-motivo" class="fi" placeholder="Ej: me equivoqué en el saldo final"></div>
+        <button class="btn" onclick="guardarCorreccionCajero()">💾 Guardar corrección</button>
       </div>
     </div>
   </div>
@@ -1430,6 +1472,21 @@ async function generarCierre(){
 async function initConfig(){const{data}=await SB.from('config_sistema').select('*');const tol=(data||[]).find(x=>x.clave==='tolerancia_cruce');if(tol)$('cfg-tol').value=tol.valor;}
 async function guardarConfig(){await SB.from('config_sistema').upsert({clave:'tolerancia_cruce',valor:String($('cfg-tol').value)});alerta('✓ Guardado');}
 
+async function cerrarMes(){
+  if(!confirm('¿Confirmas el cierre de mes? Esto actualizará el saldo inicial de todas las billeteras con el arrastre correcto.')) return;
+  const{error} = await SB.rpc('fn_cerrar_mes');
+  if(error){alerta('Error: '+error.message,'err');return;}
+  alerta('✓ Mes cerrado correctamente — saldos iniciales actualizados');
+}
+
+async function controlBilleteras(){
+  const{data} = await SB.from('v_control_billeteras').select('*');
+  const problemas = (data||[]).filter(b => Math.abs(Number(b.diferencia)) > 5000);
+  if(!problemas.length){alerta('✓ Todas las billeteras están OK');return;}
+  const msg = problemas.map(b => `${b.nombre}: diferencia $${Number(b.diferencia).toLocaleString('es-AR')}`).join('\n');
+  alert('⚠️ Billeteras con diferencias:\n\n' + msg);
+}
+
 // ══ CAJERO ══
 async function cajeroInicio(){
   const cajId=_perfil?.cajero_id;if(!cajId)return;
@@ -1589,6 +1646,60 @@ function addSaldoRow(){
 }
 function rmSaldoRow(idx){$(`sr${idx}`)?.remove();_srows=_srows.filter(i=>i!==idx);}
 
+// ── ALERTA VISUAL AL CAJERO ──
+function mostrarAlertaCajero(mensaje){
+  const div=document.createElement('div');
+  div.style.cssText=`position:fixed;top:20px;left:50%;transform:translateX(-50%);
+    background:var(--yellow);color:#000;padding:16px 24px;border-radius:10px;
+    font-family:var(--sans);font-size:14px;font-weight:600;
+    box-shadow:0 4px 24px rgba(0,0,0,0.5);z-index:9999;
+    max-width:460px;text-align:center;line-height:1.6;`;
+  div.innerHTML=mensaje+`<br><span style="font-size:11px;font-weight:400;opacity:0.75;margin-top:4px;display:block">Avisale al administrador si no sabés por qué</span>
+    <button onclick="this.parentElement.remove()" style="margin-top:8px;background:rgba(0,0,0,0.15);border:none;border-radius:5px;padding:4px 12px;cursor:pointer;font-size:12px">Cerrar</button>`;
+  document.body.appendChild(div);
+  setTimeout(()=>div.remove(),12000);
+}
+
+// ── VERIFICAR DIFERENCIA AL GUARDAR SALDO ──
+async function verificarDiferenciaBilletera(billeteraId, cajeroId, fecha, turno, saldoFinal){
+  try{
+    const now=new Date();
+    const mesDesde=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+    // Ventas netas del mes
+    const{data:tIds}=await SB.from('turnos').select('id').gte('fecha',mesDesde);
+    const ids=(tIds||[]).map(t=>t.id);
+    let ventasMes=0;
+    if(ids.length>0){
+      const{data:tp}=await SB.from('turno_panel').select('fichas_iniciales,fichas_finales,bonificaciones').in('turno_id',ids).eq('billetera_id',billeteraId);
+      ventasMes=(tp||[]).reduce((a,r)=>a+Number(r.fichas_iniciales||0)-Number(r.fichas_finales||0)-Number(r.bonificaciones||0),0);
+    }
+    const{data:exts}=await SB.from('extracciones_v2').select('monto').eq('billetera_id',billeteraId).gte('fecha',mesDesde);
+    const extMes=(exts||[]).reduce((a,e)=>a+Number(e.monto||0),0);
+    const{data:bill}=await SB.from('billeteras').select('saldo_inicial,nombre').eq('id',billeteraId).single();
+    const saldoBase=Number(bill?.saldo_inicial||0);
+    const esperado=saldoBase+ventasMes-extMes;
+    const diferencia=saldoFinal-esperado;
+
+    if(Math.abs(diferencia)>5000){
+      // Guardar alerta en BD
+      await SB.from('alertas_cajeros').insert({
+        cajero_id:cajeroId, billetera_id:billeteraId,
+        fecha, numero_turno:turno,
+        tipo:'diferencia_billetera',
+        descripcion:`Billetera ${bill?.nombre}: real $${Number(saldoFinal).toLocaleString('es-AR')} vs esperado $${Number(esperado).toLocaleString('es-AR')}`,
+        diferencia, estado:'pendiente'
+      });
+      // Mostrar alerta al cajero
+      const signo=diferencia>0?'+':'';
+      mostrarAlertaCajero(
+        diferencia>0
+          ? `⚠️ ${bill?.nombre}: tenés <strong>$${signo}${Math.abs(Math.round(diferencia)).toLocaleString('es-AR')} de más</strong> respecto a las ventas registradas`
+          : `⚠️ ${bill?.nombre}: tenés <strong>$${Math.abs(Math.round(diferencia)).toLocaleString('es-AR')} de menos</strong> respecto a las ventas registradas`
+      );
+    }
+  }catch(e){console.error('Error verificando diferencia:',e);}
+}
+
 async function guardarSaldos(){
   const cajId=_perfil?.cajero_id;if(!cajId){alerta('Sin cajero','err');return;}
   const fecha=$('cs-fecha').value,numero_turno=parseInt($('cs-turno').value);
@@ -1599,14 +1710,24 @@ async function guardarSaldos(){
     saldo_final:$(`sf${idx}`)?.value!==''?parseFloat($(`sf${idx}`)?.value):null,
   })).filter(x=>x.billetera_id);
   if(!filas.length){alerta('Seleccioná al menos una billetera','err');return;}
+  // Validar que todas las filas tienen billetera asignada
+  const sinBilletera = filas.filter(f => !f.billetera_id);
+  if(sinBilletera.length > 0){alerta('Todas las cargas deben tener una billetera asignada','err');return;}
   for(const f of filas){
     const{error}=await SB.from('saldos_billetera').upsert(f,{onConflict:'cajero_id,billetera_id,fecha,numero_turno'});
     if(error){alerta('Error: '+error.message,'err');return;}
   }
   await SB.rpc('recalcular_cruce_v5',{p_cajero_id:cajId,p_fecha:fecha,p_turno:numero_turno});
-  // Recalcular saldos de billetera automáticamente
   await SB.rpc('recalcular_todos_saldos');
-  alerta('✓ Saldos guardados');cajeroInitSaldos();
+  alerta('✓ Saldos guardados');
+  // Verificar diferencias automáticamente para cada billetera guardada
+  for(const f of filas){
+    if(f.saldo_final!==null){
+      await verificarDiferenciaBilletera(f.billetera_id, cajId, fecha, numero_turno, f.saldo_final);
+    }
+  }
+  cajeroInitSaldos();
+  cargarAlertasCajero();
 }
 
 async function cajeroLoadExt(){
@@ -2075,6 +2196,170 @@ async function guardarPagosSemana(){
 }
 
 const C_CRONO = { blue:'38BDF8', green:'4ADE80', orange:'FB923C', purple:'A78BFA' };
+
+// ── EDICIÓN DE ERRORES POR CAJERO ──
+let _alertaActual = null;
+
+async function abrirEdicionError(alerta){
+  _alertaActual = alerta;
+  $('ee-descripcion').innerHTML = `⚠️ <strong>${alerta.descripcion}</strong><br><span style="font-size:11px;color:var(--text3)">Turno ${alerta.numero_turno} del ${alerta.fecha}</span>`;
+  $('ee-fecha').value = alerta.fecha;
+  $('ee-turno').value = alerta.numero_turno;
+  $('ee-motivo').value = '';
+
+  // Llenar selector de billeteras
+  if(!_bill.length){const{data:b}=await SB.from('billeteras').select('id,nombre').order('nombre');_bill=b||[];}
+  $('ee-billetera').innerHTML = _bill.map(b=>`<option value="${b.id}"${b.id===alerta.billetera_id?' selected':''}>${b.nombre}</option>`).join('');
+
+  // Cargar saldo actual para ese turno
+  const cajId = _perfil?.cajero_id;
+  const{data:sb}=await SB.from('saldos_billetera').select('saldo_inicial,saldo_final')
+    .eq('cajero_id',cajId).eq('billetera_id',alerta.billetera_id)
+    .eq('fecha',alerta.fecha).eq('numero_turno',alerta.numero_turno).single();
+  $('ee-saldo-ini').value = sb?.saldo_inicial||'';
+  $('ee-saldo-fin').value = sb?.saldo_final||'';
+
+  $('ov-editar-error').classList.add('on');
+}
+
+async function guardarCorreccionCajero(){
+  if(!_alertaActual){return;}
+  const cajId = _perfil?.cajero_id;
+  const fecha = $('ee-fecha').value;
+  const turno = parseInt($('ee-turno').value);
+  const billId = $('ee-billetera').value;
+  const saldoIni = parseFloat($('ee-saldo-ini').value)||0;
+  const saldoFin = parseFloat($('ee-saldo-fin').value)||0;
+  const motivo = $('ee-motivo').value||'Sin motivo';
+
+  // Guardar saldo corregido
+  const{data:sbAnterior}=await SB.from('saldos_billetera')
+    .select('saldo_inicial,saldo_final')
+    .eq('cajero_id',cajId).eq('billetera_id',billId)
+    .eq('fecha',fecha).eq('numero_turno',turno).single();
+
+  const{error}=await SB.from('saldos_billetera').upsert({
+    cajero_id:cajId, billetera_id:billId, fecha, numero_turno:turno,
+    saldo_inicial:saldoIni, saldo_final:saldoFin
+  },{onConflict:'cajero_id,billetera_id,fecha,numero_turno'});
+  if(error){alerta('Error: '+error.message,'err');return;}
+
+  // Recalcular cruce y saldos automáticamente
+  await SB.rpc('recalcular_cruce_v5',{p_cajero_id:cajId, p_fecha:fecha, p_turno:turno});
+  await SB.rpc('recalcular_todos_saldos');
+
+  // Registrar en historial con valores anteriores y nuevos
+  await SB.from('historial_ediciones').insert({
+    cajero_id: cajId,
+    tipo: 'saldo_billetera',
+    descripcion: `Corrección por alerta: ${_alertaActual.descripcion}`,
+    fecha_turno: fecha,
+    numero_turno: turno,
+    campo_editado: 'saldo_billetera',
+    valor_anterior: sbAnterior ? `ini:${sbAnterior.saldo_inicial} fin:${sbAnterior.saldo_final}` : 'sin registro previo',
+    valor_nuevo: `ini:${saldoIni} fin:${saldoFin}`,
+    motivo
+  });
+
+  // Marcar alerta como revisada
+  await SB.from('alertas_cajeros').update({estado:'revisado'}).eq('id',_alertaActual.id);
+
+  alerta('✓ Corrección guardada — cruce y saldos actualizados');
+  $('ov-editar-error').classList.remove('on');
+  _alertaActual = null;
+
+  // Recargar alertas y volver a verificar diferencia
+  cargarAlertasCajero();
+  await verificarDiferenciaBilletera(billId, cajId, fecha, turno, saldoFin);
+}
+
+async function cargarAlertasCajero(){
+  const cajId = _perfil?.cajero_id;
+  if(!cajId) return;
+  const{data}=await SB.from('alertas_cajeros')
+    .select('*,billeteras(nombre)')
+    .eq('cajero_id',cajId)
+    .eq('estado','pendiente')
+    .order('created_at',{ascending:false});
+
+  const cont = $('cajero-alertas');
+  if(!data?.length){cont.style.display='none';return;}
+  cont.style.display='block';
+  cont.innerHTML = `
+    <div style="background:rgba(251,191,36,.1);border:1px solid var(--yellow);border-radius:8px;padding:12px 14px;">
+      <div style="font-weight:600;color:var(--yellow);margin-bottom:8px">⚠️ Tenés ${data.length} diferencia${data.length>1?'s':''} para revisar</div>
+      ${data.map(a=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--border)">
+          <div>
+            <div style="font-size:13px;font-weight:500">${a.billeteras?.nombre||'—'} · T${a.numero_turno} del ${a.fecha}</div>
+            <div style="font-size:11px;color:var(--text3)">${a.descripcion}</div>
+          </div>
+          <button class="btn btn-y sm" onclick='abrirEdicionError(${JSON.stringify(a)})'>Corregir</button>
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+// ── ALERTAS ADMIN ──
+async function adminAlertas(){
+  const{data}=await SB.from('alertas_cajeros')
+    .select('*,cajeros(nombre),billeteras(nombre)')
+    .order('created_at',{ascending:false})
+    .limit(100);
+
+  const pendientes=(data||[]).filter(a=>a.estado==='pendiente');
+  // Actualizar badge del botón
+  const btn=document.getElementById('btn-alertas');
+  if(btn) btn.innerHTML=`🔔 Alertas${pendientes.length>0?` <span style="background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px">${pendientes.length}</span>`:''}`;
+
+  const cont=$('alertas-lista');
+  if(!data?.length){cont.innerHTML=`<div class="empty">Sin alertas registradas</div>`;return;}
+
+  cont.innerHTML=`<div class="tw"><table>
+    <thead><tr><th>Fecha</th><th>Turno</th><th>Cajero</th><th>Descripción</th><th>Diferencia</th><th>Estado</th><th></th></tr></thead>
+    <tbody>${(data||[]).map(a=>`<tr>
+      <td class="tm" style="font-size:11px">${a.fecha}</td>
+      <td>${tbadge(a.numero_turno)}</td>
+      <td style="font-weight:500">${a.cajeros?.nombre||'—'}</td>
+      <td style="font-size:12px;color:var(--text2)">${a.descripcion||'—'}</td>
+      <td style="font-family:var(--mono);font-weight:700;color:${Number(a.diferencia)>0?'var(--orange)':'var(--red)'}">
+        ${Number(a.diferencia)>0?'+':''}$${Math.abs(Number(a.diferencia)).toLocaleString('es-AR')}
+      </td>
+      <td><span style="font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;background:${a.estado==='revisado'?'rgba(74,222,128,.12)':'rgba(251,191,36,.12)'};color:${a.estado==='revisado'?'var(--green)':'var(--yellow)'}">
+        ${a.estado==='revisado'?'✅ Revisado':'⏳ Pendiente'}
+      </span></td>
+      <td>${a.estado==='pendiente'?`<button class="btn btn-s sm" onclick="marcarAlertaRevisada('${a.id}')">Marcar revisado</button>`:''}
+      </td>
+    </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+async function adminHistorial(){
+  const{data}=await SB.from('historial_ediciones')
+    .select('*,cajeros(nombre)')
+    .order('created_at',{ascending:false})
+    .limit(100);
+
+  const cont=$('alertas-lista');
+  if(!data?.length){cont.innerHTML=`<div class="empty">Sin ediciones registradas</div>`;return;}
+
+  cont.innerHTML=`<div class="tw"><table>
+    <thead><tr><th>Fecha edición</th><th>Cajero</th><th>Turno</th><th>Tipo</th><th>Motivo</th><th>Detalle</th></tr></thead>
+    <tbody>${data.map(h=>`<tr>
+      <td class="tm" style="font-size:11px">${new Date(h.created_at).toLocaleString('es-AR')}</td>
+      <td style="font-weight:500">${h.cajeros?.nombre||'—'}</td>
+      <td>${tbadge(h.numero_turno)} <span style="font-size:10px">${h.fecha_turno||''}</span></td>
+      <td><span class="badge bp">${h.tipo}</span></td>
+      <td style="font-size:12px;color:var(--text2)">${h.motivo||'—'}</td>
+      <td style="font-size:11px;color:var(--text3)">${h.descripcion||''}</td>
+    </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+async function marcarAlertaRevisada(id){
+  await SB.from('alertas_cajeros').update({estado:'revisado'}).eq('id',id);
+  adminAlertas();
+}
 
 // ── INIT ──
 window.addEventListener('click',e=>{document.querySelectorAll('.ov').forEach(m=>{if(e.target===m)m.classList.remove('on');});});
