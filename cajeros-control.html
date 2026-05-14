@@ -1005,26 +1005,26 @@ async function adminTurnos(){
   </tr>`;}).join('');
 }
 
-// ─── FUNCIÓN CENTRAL: calcula saldo real y esperado desde datos fuente ───
-// Reconstruye TODO desde datos crudos, sin depender de valores guardados en BD
-// saldoReal     = último saldo_final cargado manualmente por el cajero
-// saldoEsperado = saldo_base + SUM(variaciones del mes) - SUM(extracciones del mes)
-// variación     = saldo_final - saldo_inicial (de saldos_billetera, NO de fichas)
-// bonificaciones: NO afectan billetera
 // ─── FUNCIÓN CENTRAL DE BILLETERA ───
-// Saldo esperado = saldo_base + SUM(ventas netas de fichas) - SUM(extracciones)
-// Ventas netas = fichas_iniciales - fichas_finales - bonificaciones
-//   positivo → vendió fichas → entra dinero
-//   negativo → pagó premios  → sale dinero
-// Extracciones → siempre restan
-// Saldo real    → último saldo_final cargado por el cajero
-function calcularSaldoBilletera(billId, saldoBase, todosTurnos, todasExtracciones, mesDesde, mesHasta) {
+// Lógica de arrastre acumulado desde saldo_base (corte de control)
+// saldoReal     = último saldo_final cargado manualmente por el cajero
+// saldoEsperado = saldo_base + SUM(ventas netas de fichas desde corte) - SUM(extracciones desde corte)
+// ventas netas  = fichas_iniciales - fichas_finales - bonificaciones (Ganamos + Panel Nuevo)
+// Extracciones  → siempre restan
+// Fecha corte   = 2026-05-14 (último corte de control manual)
+// Corte de control exacto: 14/05/2026 18:00hs
+// Solo se toman turnos/movimientos POSTERIORES a este momento
+const FECHA_CORTE     = '2026-05-14';
+const DATETIME_CORTE  = '2026-05-14T18:00:00';  // hora exacta del corte
+// T4 = 18:01 a 00:00 → primer turno válido post-corte
+const TURNO_CORTE     = 4;  // primer turno válido del día del corte
+
+function calcularSaldoBilletera(billId, saldoBase, todosSaldos, todasExtracciones, mesDesde, mesHasta) {
   // Filtrar solo esta billetera
-  const turnosBill = todosTurnos.filter(t => t.billetera_id === billId);
+  const saldosBill = todosSaldos.filter(s => s.billetera_id === billId && s.saldo_final !== null);
   const extsBill   = todasExtracciones.filter(e => e.billetera_id === billId);
 
-  // --- SALDO REAL: último saldo_final cargado manualmente por el cajero ---
-  const saldosBill = turnosBill.filter(t => t.saldo_final !== null);
+  // --- SALDO REAL: último saldo_final cargado ---
   const sorted = [...saldosBill].sort((a,b) => {
     if(a.fecha > b.fecha) return -1;
     if(a.fecha < b.fecha) return 1;
@@ -1034,27 +1034,33 @@ function calcularSaldoBilletera(billId, saldoBase, todosTurnos, todasExtraccione
   const saldoReal   = tieneSaldos ? Number(sorted[0].saldo_final) : Number(saldoBase);
   const ultReg      = tieneSaldos ? sorted[0] : null;
 
-  // --- SALDO ESPERADO: acumulativo desde saldo_base ---
-  // Ventas netas del mes = SUM(fichas_ini - fichas_fin - bonif) de turno_panel
-  const ventasNetas = turnosBill
-    .filter(t => t.fecha >= mesDesde && t.fecha <= mesHasta)
-    .reduce((acc, t) => acc + (Number(t.fichas_iniciales||0) - Number(t.fichas_finales||0) - Number(t.bonificaciones||0)), 0);
+  // --- SALDO ESPERADO: arrastre desde el corte de control ---
+  // Ventas netas de fichas desde el corte (ya cargadas en turno_panel vía _tpCorte)
+  const ventasDesdeCorte = (window._tpCorte||[])
+    .filter(tp => tp.billetera_id === billId)
+    .reduce((acc, tp) => acc + (Number(tp.fichas_iniciales||0) - Number(tp.fichas_finales||0) - Number(tp.bonificaciones||0)), 0);
 
-  // Extracciones del mes
-  const extMes = extsBill
-    .filter(e => e.fecha >= mesDesde && e.fecha <= mesHasta)
+  // Extracciones desde el corte exacto (14/05 18hs en adelante)
+  // Para el día del corte, solo las registradas después de las 18hs (created_at > DATETIME_CORTE)
+  // Para días posteriores, todas
+  const extDesdeCorte = extsBill
+    .filter(e => {
+      if(e.fecha > FECHA_CORTE) return true;
+      if(e.fecha === FECHA_CORTE) return (e.created_at||'') >= DATETIME_CORTE;
+      return false;
+    })
     .reduce((acc, e) => acc + Number(e.monto||0), 0);
 
-  // Extracciones totales (para billeteras sin saldos cargados)
+  // Extracciones totales (para billeteras sin saldos)
   const extTotal = extsBill.reduce((acc, e) => acc + Number(e.monto||0), 0);
 
-  // Esperado = saldo_base + ventas_netas_mes - extracciones_mes
-  const saldoEsperado = Number(saldoBase) + ventasNetas - extMes;
+  // Esperado = saldo_base (corte 18hs) + ventas desde corte - extracciones desde corte
+  const saldoEsperado = Number(saldoBase) + ventasDesdeCorte - extDesdeCorte;
 
-  // Para billeteras sin saldos cargados, el real también viene de la fórmula
+  // Para billeteras sin saldos: saldo_base - extracciones
   const saldoRealFinal = tieneSaldos ? saldoReal : Math.max(0, Number(saldoBase) - extTotal);
 
-  return { saldoReal: saldoRealFinal, saldoEsperado, ventasNetas, extMes, extTotal, ultReg, tieneSaldos };
+  return { saldoReal: saldoRealFinal, saldoEsperado, ventasNetas: ventasDesdeCorte, extMes: extDesdeCorte, extTotal, ultReg, tieneSaldos };
 }
 
 async function adminBilleteras(){
@@ -1067,39 +1073,32 @@ async function adminBilleteras(){
   const mesHasta = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${new Date(now.getFullYear(),now.getMonth()+1,0).getDate()}`;
   const mesLabel = now.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
 
-  // Cargar saldos_billetera (para saldo_real)
+  // Cargar saldos_billetera — fuente de verdad para saldo_real
   const{data:todosSaldosBill}=await SB.from('saldos_billetera')
     .select('billetera_id,saldo_inicial,saldo_final,fecha,numero_turno,cajero_id,created_at,cajeros(nombre)')
     .not('saldo_final','is',null)
     .order('fecha',{ascending:false})
     .order('created_at',{ascending:false});
 
-  // Cargar turno_panel del mes (para ventas netas de fichas)
-  const{data:turnosMes}=await SB.from('turnos')
-    .select('id')
-    .gte('fecha', mesDesde)
-    .lte('fecha', mesHasta);
-  const turnoIdsMes=(turnosMes||[]).map(t=>t.id);
-  let tpMes=[];
-  if(turnoIdsMes.length>0){
+  // Cargar turno_panel desde el corte exacto (14/05 18hs = T4 en adelante)
+  // T1=00-06, T2=06-12, T3=12-18, T4=18-00 → solo T4 del 14/05 y todos los días siguientes
+  const{data:turnosDesdeCorte}=await SB.from('turnos')
+    .select('id,fecha,numero_turno')
+    .or(`fecha.gt.${FECHA_CORTE},and(fecha.eq.${FECHA_CORTE},numero_turno.gte.${TURNO_CORTE})`);
+  const idsCorte=(turnosDesdeCorte||[]).map(t=>t.id);
+  let tpCorte=[];
+  if(idsCorte.length>0){
     const{data:tp}=await SB.from('turno_panel')
-      .select('billetera_id,fichas_iniciales,fichas_finales,bonificaciones,turnos!inner(fecha)')
-      .in('turno_id', turnoIdsMes)
+      .select('billetera_id,fichas_iniciales,fichas_finales,bonificaciones')
+      .in('turno_id', idsCorte)
       .not('billetera_id','is',null);
-    // Aplanar: agregar fecha al registro
-    tpMes=(tp||[]).map(r=>({...r, fecha:r.turnos?.fecha||''}));
+    tpCorte=tp||[];
   }
+  window._tpCorte = tpCorte;
 
-  // Combinar saldos + fichas en un solo array por billetera para la función
-  // Los saldos aportan saldo_real, las fichas aportan ventas netas
-  const todosTurnos=[
-    ...(todosSaldosBill||[]),
-    ...tpMes
-  ];
-
-  // Cargar TODAS las extracciones
+  // Cargar TODAS las extracciones con created_at para filtrar por hora del corte
   const{data:todasExts}=await SB.from('extracciones_v2')
-    .select('billetera_id,monto,fecha')
+    .select('billetera_id,monto,fecha,created_at')
     .not('billetera_id','is',null);
 
   const tb=$('a-tb-bill');
@@ -1110,7 +1109,7 @@ async function adminBilleteras(){
 
   tb.innerHTML=_bill.map(b=>{
     const {saldoReal, saldoEsperado, ventasNetas, extMes, extTotal, ultReg, tieneSaldos} =
-      calcularSaldoBilletera(b.id, Number(b.saldo_inicial||0), todosTurnos||[], todasExts||[], mesDesde, mesHasta);
+      calcularSaldoBilletera(b.id, Number(b.saldo_inicial||0), todosSaldosBill||[], todasExts||[], mesDesde, mesHasta);
 
     const dif = saldoReal - saldoEsperado;
     const colorReal = saldoReal>0?'var(--green)':saldoReal<0?'var(--red)':'var(--text2)';
