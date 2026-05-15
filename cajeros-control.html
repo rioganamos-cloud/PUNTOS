@@ -758,6 +758,11 @@ tr:hover td{background:rgba(255,255,255,.012);}
     <div class="fg" style="grid-column:1/-1"><label>Descripción</label><input type="text" id="io-desc" placeholder="Ej: Pago premio grande jugador VIP"></div>
   </div>
   <div class="st" style="margin-bottom:10px;font-size:10px">Billeteras participantes</div>
+  <div style="background:var(--surface2);border-radius:6px;padding:10px;margin-bottom:12px;font-size:11px;color:var(--text2);">
+    <strong style="color:var(--yellow)">Tipos de participación:</strong><br>
+    💸 <strong>Saliente real</strong> = la billetera entregó dinero físico<br>
+    🔄 <strong>Compensación</strong> = ajuste contable, el premio lo pagó otra billetera
+  </div>
   <div id="io-bills-cont"></div>
   <button class="btn btn-s sm" onclick="addOpBill('io-bills-cont')" style="margin-bottom:14px">+ Billetera</button>
   <div class="ma"><button class="btn btn-s" onclick="closeModal('m-operacion')">Cancelar</button><button class="btn" onclick="saveOperacion(false)">Guardar</button></div>
@@ -1035,14 +1040,12 @@ function calcularSaldoBilletera(billId, saldoBase, todosSaldos, todasExtraccione
   const ultReg      = tieneSaldos ? sorted[0] : null;
 
   // --- SALDO ESPERADO: arrastre desde el corte de control ---
-  // Ventas netas de fichas desde el corte (ya cargadas en turno_panel vía _tpCorte)
+  // Ventas netas de fichas desde el corte
   const ventasDesdeCorte = (window._tpCorte||[])
     .filter(tp => tp.billetera_id === billId)
     .reduce((acc, tp) => acc + (Number(tp.fichas_iniciales||0) - Number(tp.fichas_finales||0) - Number(tp.bonificaciones||0)), 0);
 
-  // Extracciones desde el corte exacto (14/05 18hs en adelante)
-  // Para el día del corte, solo las registradas después de las 18hs (created_at > DATETIME_CORTE)
-  // Para días posteriores, todas
+  // Extracciones desde el corte
   const extDesdeCorte = extsBill
     .filter(e => {
       if(e.fecha > FECHA_CORTE) return true;
@@ -1051,16 +1054,40 @@ function calcularSaldoBilletera(billId, saldoBase, todosSaldos, todasExtraccione
     })
     .reduce((acc, e) => acc + Number(e.monto||0), 0);
 
-  // Extracciones totales (para billeteras sin saldos)
   const extTotal = extsBill.reduce((acc, e) => acc + Number(e.monto||0), 0);
 
-  // Esperado = saldo_base (corte 18hs) + ventas desde corte - extracciones desde corte
-  const saldoEsperado = Number(saldoBase) + ventasDesdeCorte - extDesdeCorte;
+  // Operaciones especiales desde el corte
+  const opsBill = (window._opsBilleteras||[]).filter(o => o.billetera_id === billId);
+  
+  // saliente_real: resta del esperado (salida real de efectivo)
+  const opSalientes = opsBill
+    .filter(o => o.tipo === 'saliente_real' || !o.tipo)
+    .filter(o => {
+      const fecha = o.fecha_op||'';
+      if(fecha > FECHA_CORTE) return true;
+      if(fecha === FECHA_CORTE) return (o.created_at_op||'') >= DATETIME_CORTE;
+      return false;
+    })
+    .reduce((acc, o) => acc + Number(o.monto||0), 0);
 
-  // Para billeteras sin saldos: saldo_base - extracciones
+  // compensacion: suma al esperado (ajuste contable, no es dinero real)
+  // Sirve para neutralizar la diferencia cuando otra billetera pagó el premio
+  const opCompensaciones = opsBill
+    .filter(o => o.tipo === 'compensacion')
+    .filter(o => {
+      const fecha = o.fecha_op||'';
+      if(fecha > FECHA_CORTE) return true;
+      if(fecha === FECHA_CORTE) return (o.created_at_op||'') >= DATETIME_CORTE;
+      return false;
+    })
+    .reduce((acc, o) => acc + Number(o.monto||0), 0);
+
+  // Esperado = saldo_base + ventas - extracciones - op_salientes_reales + compensaciones
+  const saldoEsperado = Number(saldoBase) + ventasDesdeCorte - extDesdeCorte - opSalientes + opCompensaciones;
+
   const saldoRealFinal = tieneSaldos ? saldoReal : Math.max(0, Number(saldoBase) - extTotal);
 
-  return { saldoReal: saldoRealFinal, saldoEsperado, ventasNetas: ventasDesdeCorte, extMes: extDesdeCorte, extTotal, ultReg, tieneSaldos };
+  return { saldoReal: saldoRealFinal, saldoEsperado, ventasNetas: ventasDesdeCorte, extMes: extDesdeCorte, extTotal, opSalientes, opCompensaciones, ultReg, tieneSaldos };
 }
 
 async function adminBilleteras(){
@@ -1080,19 +1107,58 @@ async function adminBilleteras(){
     .order('fecha',{ascending:false})
     .order('created_at',{ascending:false});
 
-  // Cargar turno_panel desde el corte exacto (14/05 18hs = T4 en adelante)
-  // T1=00-06, T2=06-12, T3=12-18, T4=18-00 → solo T4 del 14/05 y todos los días siguientes
+  // Cargar turno_panel desde el corte exacto por billetera
+  // Regla: el turno donde se registró el saldo base ya está incluido → excluirlo
+  // Para cada billetera el arrastre empieza DESPUÉS del turno del saldo base
+  // Obtenemos el turno/fecha exacto donde se registró cada saldo_inicial
+
+  // Cargar info del último saldo_final cargado por billetera (el que define el saldo base)
+  const{data:saldosBase}=await SB.from('saldos_billetera')
+    .select('billetera_id,fecha,numero_turno')
+    .not('saldo_final','is',null)
+    .order('fecha',{ascending:false})
+    .order('created_at',{ascending:false});
+
+  // Mapa: billetera_id → {fecha, turno} del saldo base
+  const mapaSaldoBase={};
+  (saldosBase||[]).forEach(s=>{
+    if(!mapaSaldoBase[s.billetera_id]) mapaSaldoBase[s.billetera_id]={fecha:s.fecha, turno:s.numero_turno};
+  });
+
+  // Cargar TODOS los turnos desde la fecha del corte
   const{data:turnosDesdeCorte}=await SB.from('turnos')
-    .select('id,fecha,numero_turno')
+    .select('id,cajero_id,fecha,numero_turno')
     .or(`fecha.gt.${FECHA_CORTE},and(fecha.eq.${FECHA_CORTE},numero_turno.gte.${TURNO_CORTE})`);
-  const idsCorte=(turnosDesdeCorte||[]).map(t=>t.id);
+
+  // También cargar turnos previos al corte que puedan ser posteriores al saldo base de alguna billetera
+  const{data:turnosAntesCorte}=await SB.from('turnos')
+    .select('id,cajero_id,fecha,numero_turno')
+    .gte('fecha','2026-05-01')
+    .lt('fecha',FECHA_CORTE);
+
+  const todosTurnos=[...(turnosDesdeCorte||[]),...(turnosAntesCorte||[])];
+  const idsCorte=todosTurnos.map(t=>t.id);
+
+  // Mapa turno_id → {fecha, turno}
+  const mapaTurnos={};
+  todosTurnos.forEach(t=>{ mapaTurnos[t.id]={fecha:t.fecha,turno:t.numero_turno}; });
+
   let tpCorte=[];
   if(idsCorte.length>0){
     const{data:tp}=await SB.from('turno_panel')
-      .select('billetera_id,fichas_iniciales,fichas_finales,bonificaciones')
+      .select('billetera_id,fichas_iniciales,fichas_finales,bonificaciones,turno_id')
       .in('turno_id', idsCorte)
       .not('billetera_id','is',null);
-    tpCorte=tp||[];
+    // Filtrar: solo turnos POSTERIORES al saldo base de esa billetera
+    tpCorte=(tp||[]).filter(r=>{
+      const base=mapaSaldoBase[r.billetera_id];
+      const turno=mapaTurnos[r.turno_id];
+      if(!base||!turno) return false;
+      // Posterior = fecha mayor, O misma fecha con turno mayor
+      if(turno.fecha > base.fecha) return true;
+      if(turno.fecha === base.fecha && turno.turno > base.turno) return true;
+      return false;
+    });
   }
   window._tpCorte = tpCorte;
 
@@ -1100,6 +1166,19 @@ async function adminBilleteras(){
   const{data:todasExts}=await SB.from('extracciones_v2')
     .select('billetera_id,monto,fecha,created_at')
     .not('billetera_id','is',null);
+
+  // Cargar operaciones especiales con tipo (saliente_real vs compensacion)
+  const{data:todasOps}=await SB.from('operacion_billeteras')
+    .select('billetera_id,monto,tipo,operaciones_especiales!inner(fecha,created_at)')
+    .not('billetera_id','is',null);
+  // Aplanar: agregar fecha y created_at al registro
+  window._opsBilleteras = (todasOps||[]).map(o=>({
+    billetera_id: o.billetera_id,
+    monto: o.monto,
+    tipo: o.tipo||'saliente_real',
+    fecha_op: o.operaciones_especiales?.fecha||'',
+    created_at_op: o.operaciones_especiales?.created_at||'',
+  }));
 
   const tb=$('a-tb-bill');
   if(!_bill.length){
@@ -1129,7 +1208,7 @@ async function adminBilleteras(){
       <td>
         <span style="font-family:var(--mono);font-weight:700;font-size:15px;color:${colorEsp}">${saldoEsperado>=0?'+':''}$${fmt(saldoEsperado)}</span>
         <span style="font-size:9px;color:var(--text3);font-family:var(--mono);display:block;margin-top:2px">
-          ${mesLabel} · ventas $${fmt(ventasNetas)} − ext $${fmt(extMes)}
+          ventas $${fmt(ventasNetas)} − ext $${fmt(extMes)}${opSalientes>0?' − op.sal $'+fmt(opSalientes):''}${opCompensaciones>0?' + comp $'+fmt(opCompensaciones):''}
         </span>
       </td>
       <td>
@@ -1338,6 +1417,13 @@ function addOpBill(contId){
   div.innerHTML=`
     <div class="fg" style="flex:2"><label>Billetera</label><select id="obs${idx}">${bOpts}</select></div>
     <div class="fg" style="flex:1"><label>Monto</label><input type="number" id="obm${idx}" placeholder="0.00" step="0.01"></div>
+    <div class="fg" style="flex:1.5">
+      <label>Tipo</label>
+      <select id="obt${idx}" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:12px;padding:7px 10px;border-radius:6px;">
+        <option value="saliente_real">💸 Saliente real (dinero físico)</option>
+        <option value="compensacion">🔄 Compensación (ajuste contable)</option>
+      </select>
+    </div>
     <div class="fg" style="flex:0"><label>Principal</label><input type="checkbox" id="obp${idx}" style="width:20px;height:20px;margin-top:8px"></div>
     <button class="btn btn-r sm" onclick="document.getElementById('ob${idx}').remove()" style="margin-top:16px">✕</button>
   `;
@@ -1357,7 +1443,12 @@ async function saveOperacion(esCajero){
   const cont=$(contId);
   const filas=[...cont.querySelectorAll('[id^="ob"]')].map(div=>{
     const idx=div.id.replace('ob','');
-    return{billetera_id:$('obs'+idx)?.value||null,monto:parseFloat($('obm'+idx)?.value)||0,es_principal:$('obp'+idx)?.checked||false};
+    return{
+      billetera_id:$('obs'+idx)?.value||null,
+      monto:parseFloat($('obm'+idx)?.value)||0,
+      es_principal:$('obp'+idx)?.checked||false,
+      tipo:$('obt'+idx)?.value||'saliente_real',
+    };
   }).filter(x=>x.billetera_id&&x.monto>0);
   if(!filas.length){alerta('Agregá al menos una billetera con monto','err');return;}
   const monto_total=filas.reduce((a,x)=>a+x.monto,0);
