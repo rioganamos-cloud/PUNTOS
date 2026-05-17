@@ -1168,17 +1168,23 @@ async function adminBilleteras(){
     .not('billetera_id','is',null);
 
   // Cargar operaciones especiales con tipo (saliente_real vs compensacion)
-  const{data:todasOps}=await SB.from('operacion_billeteras')
-    .select('billetera_id,monto,tipo,operaciones_especiales!inner(fecha,created_at)')
-    .not('billetera_id','is',null);
-  // Aplanar: agregar fecha y created_at al registro
-  window._opsBilleteras = (todasOps||[]).map(o=>({
-    billetera_id: o.billetera_id,
-    monto: o.monto,
-    tipo: o.tipo||'saliente_real',
-    fecha_op: o.operaciones_especiales?.fecha||'',
-    created_at_op: o.operaciones_especiales?.created_at||'',
-  }));
+  // Usamos LEFT JOIN para evitar que falle si hay registros sin operacion_id válido
+  try {
+    const{data:todasOps}=await SB.from('operacion_billeteras')
+      .select('billetera_id,monto,tipo,operaciones_especiales(fecha,created_at)')
+      .not('billetera_id','is',null);
+    // Aplanar: agregar fecha y created_at al registro
+    window._opsBilleteras = (todasOps||[]).map(o=>({
+      billetera_id: o.billetera_id,
+      monto: o.monto,
+      tipo: o.tipo||'saliente_real',
+      fecha_op: o.operaciones_especiales?.fecha||'',
+      created_at_op: o.operaciones_especiales?.created_at||'',
+    }));
+  } catch(e) {
+    console.warn('Error cargando operaciones especiales:', e);
+    window._opsBilleteras = [];
+  }
 
   const tb=$('a-tb-bill');
   if(!_bill.length){
