@@ -1091,6 +1091,8 @@ function calcularSaldoBilletera(billId, saldoBase, todosSaldos, todasExtraccione
 }
 
 async function adminBilleteras(){
+  console.log("adminBilleteras iniciado");
+  console.log("contenedor:", document.getElementById('a-tb-bill'));
   // Cargar billeteras
   const{data:bills}=await SB.from('billeteras').select('*').order('nombre');
   _bill=bills||[];
@@ -1193,7 +1195,7 @@ async function adminBilleteras(){
   }
 
   tb.innerHTML=_bill.map(b=>{
-    const {saldoReal, saldoEsperado, ventasNetas, extMes, extTotal, ultReg, tieneSaldos} =
+    const {saldoReal, saldoEsperado, ventasNetas, extMes, extTotal, opSalientes, opCompensaciones, ultReg, tieneSaldos} =
       calcularSaldoBilletera(b.id, Number(b.saldo_inicial||0), todosSaldosBill||[], todasExts||[], mesDesde, mesHasta);
 
     const dif = saldoReal - saldoEsperado;
@@ -1233,6 +1235,7 @@ async function adminBilleteras(){
 
   fillSel('f-bill-sel',_bill,b=>b.nombre,b=>b.id,'Seleccioná billetera...');
   fillSel('f-bill-caj',_caj,c=>c.nombre,c=>c.id,'Todos los cajeros');
+  console.log("render completado:", _bill.length, "billeteras");
 }
 
 async function saveBill(){
