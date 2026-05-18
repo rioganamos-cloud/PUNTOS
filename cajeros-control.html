@@ -1278,6 +1278,108 @@ async function adminBilleteras(){
 }
 
 // ── FUNCIÓN SEPARADA: renderizar una tarjeta de billetera ──────
+// ── DIAGNÓSTICO DE ORIGEN DE DIFERENCIA ──────────────────────
+// Recorre turnos cronológicamente y detecta el primer punto de divergencia
+function diagnosticarOrigen(b, _sPC, todasExts, base) {
+  const sbs = (_sPC[b.id]||[]).sort((a,x) =>
+    a.fecha>x.fecha?1:a.fecha<x.fecha?-1:Number(a.numero_turno)-Number(x.numero_turno));
+
+  if(!sbs.length) return { desde:'—', motivo:'Sin cierres post-corte', tipo:'sin_cierre' };
+
+  const extsBill = (todasExts||[]).filter(e => e.billetera_id === b.id);
+  const esPC = e => e.fecha > FECHA_CORTE || (e.fecha===FECHA_CORTE && (e.created_at||'')>=DATETIME_CORTE && (e.created_at||'')<'2026-05-15T00:00:00');
+
+  let esp = base; // arrastre del esperado
+
+  for(let i = 0; i < sbs.length; i++) {
+    const sb = sbs[i];
+    const billIni = Number(sb.saldo_inicial);
+    const billFin = Number(sb.saldo_final);
+
+    // Fichas del turno
+    const tpTurno = (window._tpTodosRaw||[]).filter(tp =>
+      tp.billetera_id===b.id && tp._fecha===sb.fecha && Number(tp._turno)===Number(sb.numero_turno));
+    const ganVta = tpTurno.find(tp=>tp._panel==='Ganamos') ? Number(tpTurno.find(tp=>tp._panel==='Ganamos').fichas_iniciales||0)-Number(tpTurno.find(tp=>tp._panel==='Ganamos').fichas_finales||0)-Number(tpTurno.find(tp=>tp._panel==='Ganamos').bonificaciones||0) : null;
+    const pnVta  = tpTurno.find(tp=>tp._panel==='Panel Nuevo') ? Number(tpTurno.find(tp=>tp._panel==='Panel Nuevo').fichas_iniciales||0)-Number(tpTurno.find(tp=>tp._panel==='Panel Nuevo').fichas_finales||0)-Number(tpTurno.find(tp=>tp._panel==='Panel Nuevo').bonificaciones||0) : null;
+    const ventas = (ganVta||0) + (pnVta||0);
+
+    // Extracciones entre el turno anterior y este
+    const extAnterior = i === 0
+      ? extsBill.filter(esPC).filter(e => e.fecha < sb.fecha).reduce((a,e)=>a+Number(e.monto||0),0)
+      : extsBill.filter(esPC).filter(e => e.fecha < sb.fecha && e.fecha > sbs[i-1].fecha).reduce((a,e)=>a+Number(e.monto||0),0);
+
+    // Diferencia de inicio
+    const iniEsp = esp - extAnterior;
+    const difIni = billIni - iniEsp;
+
+    // Operaciones especiales del turno (compensaciones)
+    const opsBillD = (window._opsBilleteras||[]).filter(o=>o.billetera_id===b.id);
+    const compTurnoD = opsBillD.filter(o=>o.tipo==='compensacion'&&(o.fecha_op||'')===sb.fecha).reduce((a,o)=>a+Number(o.monto||0),0);
+    const opSalTurnoD = opsBillD.filter(o=>(o.tipo==='saliente_real'||!o.tipo)&&(o.fecha_op||'')===sb.fecha).reduce((a,o)=>a+Number(o.monto||0),0);
+
+    // Diferencia de cierre (incluye compensaciones)
+    const espCierre = billIni + ventas - opSalTurnoD + compTurnoD;
+    const difCierre = billFin - espCierre;
+
+    // Detectar primer problema
+    if(Math.abs(difIni) > 1000 && i === 0) {
+      return {
+        desde: `${sb.fecha} T${sb.numero_turno}`,
+        motivo: `Gap de $${Math.round(difIni).toLocaleString('es-AR')} entre saldo base y primer turno — faltan saldos intermedios`,
+        tipo: 'gap_inicio'
+      };
+    }
+    if(Math.abs(difIni) > 1000 && i > 0) {
+      return {
+        desde: `${sbs[i-1].fecha} T${sbs[i-1].numero_turno} → ${sb.fecha} T${sb.numero_turno}`,
+        motivo: `Gap de $${Math.round(difIni).toLocaleString('es-AR')} entre turnos — faltan saldos intermedios`,
+        tipo: 'gap_intermedio'
+      };
+    }
+    if(ganVta === null) {
+      return {
+        desde: `${sb.fecha} T${sb.numero_turno}`,
+        motivo: 'Falta cargar Ganamos en este turno',
+        tipo: 'falta_ganamos'
+      };
+    }
+    if(pnVta === null) {
+      return {
+        desde: `${sb.fecha} T${sb.numero_turno}`,
+        motivo: 'Falta cargar Panel Nuevo en este turno',
+        tipo: 'falta_pn'
+      };
+    }
+    if(Math.abs(difCierre) > 1000) {
+      return {
+        desde: `${sb.fecha} T${sb.numero_turno}`,
+        motivo: `Diferencia de cierre de $${Math.round(difCierre).toLocaleString('es-AR')} — revisar fichas`,
+        tipo: 'dif_cierre'
+      };
+    }
+    if(Math.abs(difCierre) > 0 && Math.abs(difCierre) <= 1000) {
+      // pequeña diferencia acumulada — no interrumpir, seguir
+    }
+
+    // Actualizar el arrastre
+    esp = billFin;
+  }
+
+  // Verificar si hay extracciones post-último cierre no compensadas
+  const ultSb = sbs[sbs.length-1];
+  const extPost = extsBill.filter(e => e.fecha > ultSb.fecha).reduce((a,e)=>a+Number(e.monto||0),0);
+  if(extPost > 0) {
+    return {
+      desde: `después de ${ultSb.fecha} T${ultSb.numero_turno}`,
+      motivo: `Movimientos posteriores al último cierre: -$${extPost.toLocaleString('es-AR')}`,
+      tipo: 'ext_posterior'
+    };
+  }
+
+  // Si llegamos acá sin problema, la diferencia es mínima
+  return { desde: 'acumulada', motivo: 'Rendimientos/intereses automáticos de la billetera', tipo: 'rendimiento' };
+}
+
 function renderBillCard(b, _sPC, todasExts, todosSaldosBill, estLbl) {
   const base  = Number(b.saldo_inicial||0);
   const sbs   = (_sPC[b.id]||[]).sort((a,x) => a.fecha>x.fecha?1:a.fecha<x.fecha?-1:Number(a.numero_turno)-Number(x.numero_turno));
@@ -1403,6 +1505,22 @@ function renderBillCard(b, _sPC, todasExts, todosSaldosBill, estLbl) {
         <div style="font-size:10px;color:${estA.col};margin-top:2px">${estA.ico} ${estA.txt}</div>
       </div>
     </div>
+
+    <!-- DIAGNÓSTICO DE ORIGEN -->
+    ${Math.abs(difActual) <= 1000 && estA.ico !== '⏳'
+      ? `<div style="padding:8px 16px;background:rgba(74,222,128,.07);border-bottom:1px solid var(--border);font-size:11px;color:var(--green);">
+           ✅ Sin discrepancias detectadas
+         </div>`
+      : diagnostico.tipo === 'sin_cierre'
+        ? `<div style="padding:8px 16px;background:rgba(148,163,184,.07);border-bottom:1px solid var(--border);font-size:11px;color:var(--text3);">
+             📍 <b>Sin cierres post-corte cargados</b>
+           </div>`
+        : `<div style="padding:8px 16px;background:rgba(251,191,36,.07);border-bottom:1px solid var(--border);font-size:11px;">
+             📍 <b style="color:var(--text2)">Origen de la diferencia</b>
+             <span style="color:var(--text3);margin-left:6px">Desde: <b style="color:var(--text)">${diagnostico.desde}</b></span>
+             <span style="color:var(--text3);margin-left:6px">— ${diagnostico.motivo}</span>
+           </div>`
+    }
 
     <!-- 3 SECCIONES -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:0;font-size:12px;">
