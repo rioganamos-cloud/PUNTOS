@@ -1467,6 +1467,9 @@ function renderBillCard(b, _sPC, todasExts, todosSaldosBill, estLbl) {
         ⚠️ Cierre incompleto: falta ${!joOk?'Ganamos':'Panel Nuevo'}
        </div>` : '';
 
+  // DIAGNÓSTICO DE ORIGEN — siempre se calcula antes del return
+  const diagnostico = diagnosticarOrigen(b, _sPC, todasExts, base) || {desde:'—', motivo:'Sin datos', tipo:'sin_cierre'};
+
   return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:16px;overflow:hidden;">
 
     <!-- HEADER -->
