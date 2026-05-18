@@ -1210,22 +1210,31 @@ async function adminBilleteras(){
     window._opsBilleteras = [];
   }
   console.log("_opsBilleteras:", window._opsBilleteras?.length);
-  console.log("saldosPostCorte billeteras con datos:", Object.keys(saldosPostCorte||{}).length);
+  // saldosPostCorte se calcula más abajo como _sPC
 
   // ── RENDER BILLETERAS ──────────────────────────────────────────
   // El wrapper #a-bill-wrapper está en el HTML estático — siempre existe
   const wrapper = document.getElementById('a-bill-wrapper');
-  if(!wrapper){ console.error('a-bill-wrapper no encontrado en DOM'); return; }
-  console.log("wrapper encontrado:", wrapper.id);
+  if(!wrapper){
+    // Si por alguna razón no existe, mostrarlo en el tab
+    const tab = document.getElementById('tab-a-billeteras');
+    if(tab){ const d=document.createElement('div');d.id='a-bill-wrapper';tab.appendChild(d); }
+    else { console.error('No existe ni el wrapper ni el tab'); return; }
+  }
+  const wrapperEl = document.getElementById('a-bill-wrapper');
+  // Forzar visibilidad
+  wrapperEl.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;min-height:20px;';
 
   if(!_bill.length){
-    wrapper.innerHTML=`<div class="empty">Sin billeteras.</div>`;
+    wrapperEl.innerHTML=`<div style="padding:20px;color:var(--text2)">No se encontraron billeteras en la base de datos.</div>`;
     fillSel('f-bill-sel',_bill,b=>b.nombre,b=>b.id,'Seleccioná billetera...');
     fillSel('f-bill-caj',_caj,c=>c.nombre,c=>c.id,'Todos los cajeros');
     return;
   }
 
-  // Paso 2: helpers locales (no dependen de variables externas)
+  console.log("renderizando", _bill.length, "billeteras...");
+
+  // Helpers locales
   const estLbl = dif => {
     const a = Math.abs(dif);
     if(a <= 1000)  return {ico:'✔', txt:'coincide',          col:'var(--green)'};
@@ -1233,7 +1242,7 @@ async function adminBilleteras(){
     return             {ico:'🔴', txt:'revisar',              col:'var(--red)'};
   };
 
-  // Paso 3: pre-calcular saldos post-corte agrupados por billetera_id
+  // Pre-calcular saldos post-corte agrupados por billetera_id
   const _sPC = {};
   (todosSaldosBill||[]).forEach(s => {
     if(!s.saldo_final) return;
@@ -1243,19 +1252,21 @@ async function adminBilleteras(){
     _sPC[s.billetera_id].push(s);
   });
 
-  // Paso 4: renderizar cada billetera con try/catch
-  wrapper.innerHTML = _bill
-    .filter(b => b.saldo_actual > 0 || b.saldo_inicial > 0)
+  // Renderizar cada billetera — todas (sin filtro restrictivo)
+  // con try/catch para que si una falla, las demás siguen
+  wrapperEl.innerHTML = _bill
     .map(b => {
       try {
         return renderBillCard(b, _sPC, todasExts, todosSaldosBill, estLbl);
       } catch(err) {
         console.error('Error billetera', b?.nombre, err);
-        return `<div style="border:1px solid var(--red);border-radius:8px;padding:12px;margin-bottom:8px;font-size:12px;color:var(--red)">
-          ⚠️ Error en <b>${b?.nombre}</b>: ${err?.message||err}
+        return `<div style="border:1px solid red;border-radius:8px;padding:12px;margin-bottom:8px;font-size:12px;color:red;">
+          ⚠️ Error en <b>${b?.nombre||'?'}</b>: ${err?.message||String(err)}
         </div>`;
       }
     }).join('');
+
+  console.log("render completado:", _bill.length, "billeteras");
 
   fillSel('f-bill-sel',_bill,b=>b.nombre,b=>b.id,'Seleccioná billetera...');
   fillSel('f-bill-caj',_caj,c=>c.nombre,c=>c.id,'Todos los cajeros');
