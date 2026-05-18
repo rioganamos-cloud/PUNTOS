@@ -1096,10 +1096,10 @@ function calcularSaldoBilletera(billId, saldoBase, todosSaldos, todasExtraccione
 }
 
 async function adminBilleteras(){
-  console.log("adminBilleteras iniciado");
-  console.log("contenedor:", document.getElementById('a-tb-bill'));
+  console.log("=== adminBilleteras iniciado ===");
   // Cargar billeteras
   const{data:bills}=await SB.from('billeteras').select('*').order('nombre');
+  console.log("billeteras cargadas:", bills?.length, bills?.map(b=>b.nombre));
   _bill=bills||[];
 
   const now = new Date();
@@ -1183,6 +1183,7 @@ async function adminBilleteras(){
     }));
   }
   window._tpCorte = tpCorte;
+  console.log("_tpCorte:", tpCorte?.length, "_tpTodosRaw:", window._tpTodosRaw?.length);
 
   // Cargar TODAS las extracciones con created_at para filtrar por hora del corte
   const{data:todasExts}=await SB.from('extracciones_v2')
@@ -1207,297 +1208,259 @@ async function adminBilleteras(){
     console.warn('Error cargando operaciones especiales:', e);
     window._opsBilleteras = [];
   }
+  console.log("_opsBilleteras:", window._opsBilleteras?.length);
+  console.log("saldosPostCorte billeteras con datos:", Object.keys(saldosPostCorte||{}).length);
 
-  // Render billeteras con nueva vista de 3 secciones
-  const cont = $('a-tb-bill')?.parentElement?.parentElement || document.querySelector('#tab-a-billeteras .section');
-  const wrapper = $('a-bill-wrapper') || (() => {
-    const d = document.createElement('div');
-    d.id = 'a-bill-wrapper';
-    $('a-tb-bill').closest('table').parentElement.after(d);
-    return d;
-  })();
+  // ── RENDER BILLETERAS ──────────────────────────────────────────
+  // Paso 1: Asegurar que el contenedor existe (independiente de la tabla vieja)
+  let wrapper = document.getElementById('a-bill-wrapper');
+  if(!wrapper){
+    wrapper = document.createElement('div');
+    wrapper.id = 'a-bill-wrapper';
+    const tableParent = $('a-tb-bill')?.closest('table')?.parentElement;
+    if(tableParent) tableParent.after(wrapper);
+    else document.querySelector('#tab-a-billeteras')?.appendChild(wrapper);
+  }
+  // Ocultar la tabla vieja
+  try { $('a-tb-bill').closest('table').style.display='none'; } catch(e){}
 
   if(!_bill.length){
-    wrapper.innerHTML=`<div class="empty">Sin billeteras. Creá una con "+ Nueva".</div>`;
+    wrapper.innerHTML=`<div class="empty">Sin billeteras.</div>`;
     fillSel('f-bill-sel',_bill,b=>b.nombre,b=>b.id,'Seleccioná billetera...');
     fillSel('f-bill-caj',_caj,c=>c.nombre,c=>c.id,'Todos los cajeros');
     return;
   }
 
-  // Construir tarjetas de billetera con 3 secciones
-  const estLabel = (dif, tieneSig) => {
-    if(!tieneSig) return {ico:'⏳',txt:'sin próximo turno',col:'var(--text3)'};
+  // Paso 2: helpers locales (no dependen de variables externas)
+  const estLbl = dif => {
     const a = Math.abs(dif);
-    if(a <= 1000) return {ico:'✔',txt:'coincide',col:'var(--green)'};
-    if(a <= 10000) return {ico:'⚠️',txt:'diferencia menor',col:'var(--yellow)'};
-    return {ico:'🔴',txt:'revisar',col:'var(--red)'};
+    if(a <= 1000)  return {ico:'✔', txt:'coincide',          col:'var(--green)'};
+    if(a <= 10000) return {ico:'⚠️', txt:'diferencia menor', col:'var(--yellow)'};
+    return             {ico:'🔴', txt:'revisar',              col:'var(--red)'};
   };
 
-  // Agrupar saldos post-corte por billetera_id
-  const CORTE_FECHA = FECHA_CORTE;
-  const CORTE_TURNO = TURNO_CORTE;
-
-  const saldosPostCorte = {};
+  // Paso 3: pre-calcular saldos post-corte agrupados por billetera_id
+  const _sPC = {};
   (todosSaldosBill||[]).forEach(s => {
     if(!s.saldo_final) return;
-    const esPostCorte = s.fecha > CORTE_FECHA || (s.fecha === CORTE_FECHA && s.numero_turno >= CORTE_TURNO);
-    if(!esPostCorte) return;
-    if(!saldosPostCorte[s.billetera_id]) saldosPostCorte[s.billetera_id] = [];
-    saldosPostCorte[s.billetera_id].push(s);
+    const ok = s.fecha > FECHA_CORTE || (s.fecha === FECHA_CORTE && s.numero_turno >= TURNO_CORTE);
+    if(!ok) return;
+    if(!_sPC[s.billetera_id]) _sPC[s.billetera_id] = [];
+    _sPC[s.billetera_id].push(s);
   });
 
-  wrapper.innerHTML = _bill.filter(b => b.saldo_actual > 0 || b.saldo_inicial > 0).map(b => {
-    const base = Number(b.saldo_inicial||0);
-    const sbs = (saldosPostCorte[b.id]||[]).sort((a,x) => a.fecha>x.fecha?1:a.fecha<x.fecha?-1:a.numero_turno-x.numero_turno);
-
-    // Turno actual (último cerrado)
-    const ultSb = sbs.length > 0 ? sbs[sbs.length-1] : null;
-
-    // Todas las fichas post-corte de esta billetera (incluyendo el turno del saldo base)
-    // BUG FIX: _tpCorte excluye el turno donde se registró el saldo base.
-    // Para la sección 1 necesitamos las fichas del último turno cerrado
-    // aunque ese turno sea el mismo que el del saldo base.
-    // Usamos todosTurnos (no filtrado) para buscar fichas del último turno.
-    const tpTodos = [];
-    if(idsCorte.length > 0) {
-      // Ya tenemos tpCorte pero puede excluir el último turno si coincide con saldo base
-      // Buscamos directamente en tpCorte + el turno del ultimo saldo si no está
-      (window._tpCorte||[]).filter(tp => tp.billetera_id === b.id).forEach(tp => tpTodos.push(tp));
-    }
-
-    // Fichas del último turno (sección 1)
-    let ganVta = 0, pnVta = 0, joOk = false, daOk = false;
-    if(ultSb) {
-      // Buscar en _tpCorte primero
-      let tpUltTurno = tpTodos.filter(tp => tp._fecha === ultSb.fecha && Number(tp._turno) === Number(ultSb.numero_turno));
-      // Si no encontró (porque el filtro de mapaSaldoBase lo excluyó), buscar en _tpTodosRaw
-      if(!tpUltTurno.length && window._tpTodosRaw) {
-        tpUltTurno = window._tpTodosRaw.filter(tp =>
-          tp.billetera_id === b.id &&
-          tp._fecha === ultSb.fecha &&
-          Number(tp._turno) === Number(ultSb.numero_turno)
-        );
+  // Paso 4: renderizar cada billetera con try/catch
+  wrapper.innerHTML = _bill
+    .filter(b => b.saldo_actual > 0 || b.saldo_inicial > 0)
+    .map(b => {
+      try {
+        return renderBillCard(b, _sPC, todasExts, todosSaldosBill, estLbl);
+      } catch(err) {
+        console.error('Error billetera', b?.nombre, err);
+        return `<div style="border:1px solid var(--red);border-radius:8px;padding:12px;margin-bottom:8px;font-size:12px;color:var(--red)">
+          ⚠️ Error en <b>${b?.nombre}</b>: ${err?.message||err}
+        </div>`;
       }
-      tpUltTurno.forEach(tp => {
-        const v = Number(tp.fichas_iniciales||0) - Number(tp.fichas_finales||0) - Number(tp.bonificaciones||0);
-        if(tp._panel === 'Ganamos') { ganVta = v; joOk = true; }
-        else { pnVta = v; daOk = true; }
-      });
-    }
-    const ventasUlt = ganVta + pnVta;
-
-    // Ventas acumuladas desde el corte (para indicador principal)
-    // Incluir también el turno del saldo base usando _tpTodosRaw
-    const tpAcumBase = (window._tpTodosRaw||window._tpCorte||[]).filter(tp => tp.billetera_id === b.id);
-    const ventasAcum = tpAcumBase.reduce((a,tp) => a + Number(tp.fichas_iniciales||0) - Number(tp.fichas_finales||0) - Number(tp.bonificaciones||0), 0);
-
-    // Extracciones de esta billetera post-corte
-    const extsBill = (todasExts||[]).filter(e => e.billetera_id === b.id);
-    const esPostCorteExt = e => {
-      if(e.fecha > CORTE_FECHA) return true;
-      if(e.fecha === CORTE_FECHA) { const c=e.created_at||''; return c>=DATETIME_CORTE && c<'2026-05-15T00:00:00'; }
-      return false;
-    };
-    const extPostCorte = extsBill.filter(esPostCorteExt);
-
-    // BUG FIX: separar extracciones DURANTE el turno vs ENTRE turnos
-    // "Durante el turno" = fecha === fecha del último turno Y anteriores al cierre
-    // "Entre turnos" = posteriores al último cierre (fecha > ultSb.fecha)
-    //                  O anteriores al primer turno (fecha < fechaInicioTurno pero > corte)
-    const extDuranteTurno = ultSb ? extPostCorte.filter(e =>
-      e.fecha === ultSb.fecha
-      // Solo las del mismo día que el turno Y que no sean posteriores al cierre
-    ).reduce((a,e) => a + Number(e.monto||0), 0) : 0;
-
-    const extEntreTurnos = ultSb ? extPostCorte.filter(e =>
-      e.fecha !== ultSb.fecha  // diferente fecha al turno = entre turnos
-    ).reduce((a,e) => a + Number(e.monto||0), 0) : extPostCorte.reduce((a,e)=>a+Number(e.monto||0),0);
-
-    // Total extracciones para el indicador principal
-    const extAcum = extPostCorte.reduce((a,e) => a + Number(e.monto||0), 0);
-
-    // Operaciones especiales post-corte
-    const opsBill = (window._opsBilleteras||[]).filter(o => o.billetera_id === b.id);
-    const esFPC = o => { const f=o.fecha_op||''; return f>CORTE_FECHA||(f===CORTE_FECHA&&(o.created_at_op||'')>=DATETIME_CORTE); };
-    const opSalAcum  = opsBill.filter(o=>(o.tipo==='saliente_real'||!o.tipo)&&esFPC(o)).reduce((a,o)=>a+Number(o.monto||0),0);
-    const compAcum   = opsBill.filter(o=>o.tipo==='compensacion'&&esFPC(o)).reduce((a,o)=>a+Number(o.monto||0),0);
-
-    // Op. entre turnos (posteriores al último cierre)
-    const opEntre = ultSb ? opsBill.filter(o=>(o.tipo==='saliente_real'||!o.tipo)&&(o.fecha_op||'')>ultSb.fecha).reduce((a,o)=>a+Number(o.monto||0),0) : 0;
-    const compEntre = ultSb ? opsBill.filter(o=>o.tipo==='compensacion'&&(o.fecha_op||'')>ultSb.fecha).reduce((a,o)=>a+Number(o.monto||0),0) : 0;
-
-    // INDICADOR PRINCIPAL
-    // 1. Último saldo declarado = último bill_fin cargado por el cajero
-    const ultSaldoDeclarado = ultSb ? Number(ultSb.saldo_final) : base;
-
-    // 2. Movimientos POSTERIORES al último cierre
-    //    = extracciones con fecha > ultSb.fecha
-    //    + operaciones especiales con fecha > ultSb.fecha
-    const extPost = ultSb ? extsBill.filter(e => {
-      if(e.fecha > ultSb.fecha) return true;
-      if(e.fecha === ultSb.fecha) {
-        // mismo día pero registrada después del cierre
-        const cat = e.created_at||'';
-        return cat > (ultSb.created_at||'');
-      }
-      return false;
-    }).reduce((a,e) => a + Number(e.monto||0), 0) : 0;
-
-    const opSalPost = ultSb ? opsBill.filter(o =>
-      (o.tipo==='saliente_real'||!o.tipo) && (o.fecha_op||'') > ultSb.fecha
-    ).reduce((a,o) => a + Number(o.monto||0), 0) : 0;
-
-    const compPost = ultSb ? opsBill.filter(o =>
-      o.tipo==='compensacion' && (o.fecha_op||'') > ultSb.fecha
-    ).reduce((a,o) => a + Number(o.monto||0), 0) : 0;
-
-    const movPosteriores = -extPost - opSalPost + compPost;
-
-    // 3. Billetera real ajustada = último saldo declarado + movimientos posteriores
-    const saldoRealAjustado = ultSaldoDeclarado + movPosteriores;
-
-    // 4. Billetera esperada = base + ventas acum - TODAS las extracciones (incluso posteriores) - op_sal total + comp total
-    // Las extracciones posteriores al cierre impactan en ambos lados:
-    // → en saldoRealAjustado (ya se aplicaron arriba)
-    // → en saldoEspActual (se suman aquí para que no generen diferencia)
-    const saldoEspActual = base + ventasAcum - extAcum - extPost - opSalAcum - opSalPost + compAcum + compPost;
-
-    // 5. Diferencia real = real ajustado - esperado
-    // Si extPost está en ambos lados → se cancela → solo queda diferencia real no explicada
-    const difActual = saldoRealAjustado - saldoEspActual;
-    const estA = estLabel(difActual, true);
-
-    // SECCIÓN 1: cierre del último turno
-    // Fórmula: bill_inicio + ventas_del_turno - ext_durante_turno - op_sal_turno + comp_turno
-    const billIni = ultSb ? Number(ultSb.saldo_inicial) : base;
-    const billFin = ultSb ? Number(ultSb.saldo_final) : base;
-    const opSalTurno = ultSb ? opsBill.filter(o=>(o.tipo==='saliente_real'||!o.tipo)&&(o.fecha_op||'')===ultSb.fecha).reduce((a,o)=>a+Number(o.monto||0),0) : 0;
-    const compTurno  = ultSb ? opsBill.filter(o=>o.tipo==='compensacion'&&(o.fecha_op||'')===ultSb.fecha).reduce((a,o)=>a+Number(o.monto||0),0) : 0;
-    const espCierre  = billIni + ventasUlt - extDuranteTurno - opSalTurno + compTurno;
-    const difCierre  = billFin - espCierre;
-
-    // Detectar posible rendimiento (diferencia pequeña constante)
-    const esRendimiento = Math.abs(difCierre) > 0 && Math.abs(difCierre) <= 1000;
-    const estC = esRendimiento ? {ico:'💸',txt:'posible rendimiento/intereses',col:'var(--text2)'} : estLabel(difCierre, true);
-
-    // SECCIÓN 2: movimientos entre turnos
-    const movTotal = -extEntreTurnos - opEntre + compEntre;
-
-    // SECCIÓN 3: inicio esperado del turno actual
-    // inicio_esperado = saldo_base - movimientos_entre_corte_y_turno
-    // Compara con el inicio_real que cargó el cajero (ultSb.saldo_inicial)
-    const iniEspProx = base - extEntreTurnos - opEntre + compEntre;
-    const inicioReal = ultSb ? Number(ultSb.saldo_inicial) : null;
-    const difInicio = inicioReal !== null ? inicioReal - iniEspProx : null;
-    const esRendimientoInicio = difInicio !== null && Math.abs(difInicio) > 0 && Math.abs(difInicio) <= 1000;
-    const estI = difInicio !== null
-      ? (esRendimientoInicio ? {ico:'💸',txt:'posible rendimiento/intereses',col:'var(--text2)'} : estLabel(difInicio, true))
-      : estLabel(0, false);
-
-    const tieneCierre = !!ultSb;
-    const ultLabel = ultSb ? `${ultSb.fecha} T${ultSb.numero_turno} · ${ultSb.cajeros?.nombre||''}` : 'sin cierre cargado';
-
-    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0;margin-bottom:16px;overflow:hidden;">
-      <!-- HEADER -->
-      <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <span style="font-weight:600;font-size:15px">${b.nombre}</span>
-          <span style="font-size:11px;color:var(--text3);margin-left:8px">${b.plataforma||'—'}</span>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-s sm" onclick="loadDetalleBill('${b.id}')">Ver detalle</button>
-          <button class="btn btn-y sm" onclick="abrirAjuste('${b.id}','${b.nombre}',${saldoReal})">Ajustar</button>
-          <button class="btn btn-r sm" onclick="delBill('${b.id}')">Eliminar</button>
-        </div>
-      </div>
-
-      <!-- INDICADOR PRINCIPAL -->
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;border-bottom:1px solid var(--border);">
-        <div style="padding:12px 16px;border-right:1px solid var(--border);">
-          <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Último declarado</div>
-          <div style="font-size:16px;font-weight:600;font-family:var(--mono)">$${fmt(ultSaldoDeclarado)}</div>
-          <div style="font-size:10px;color:var(--text3);margin-top:2px">${ultLabel}</div>
-        </div>
-        <div style="padding:12px 16px;border-right:1px solid var(--border);">
-          <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Real ajustado</div>
-          <div style="font-size:16px;font-weight:600;font-family:var(--mono);color:${movPosteriores!==0?'var(--yellow)':'var(--green)'}">$${fmt(saldoRealAjustado)}</div>
-          <div style="font-size:10px;color:var(--text3);margin-top:2px">
-            ${movPosteriores!==0
-              ? `mov. post.: ${movPosteriores>=0?'+':''}$${fmt(Math.abs(movPosteriores))}`
-              : 'sin movimientos posteriores'}
-          </div>
-        </div>
-        <div style="padding:12px 16px;border-right:1px solid var(--border);">
-          <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Esperado</div>
-          <div style="font-size:16px;font-weight:600;font-family:var(--mono)">$${fmt(saldoEspActual)}</div>
-          <div style="font-size:10px;color:var(--text3);margin-top:2px">base $${fmt(base)}</div>
-        </div>
-        <div style="padding:12px 16px;">
-          <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Diferencia real</div>
-          <div style="font-size:16px;font-weight:600;font-family:var(--mono);color:${estA.col}">${difActual>=0?'+':''}$${fmt(Math.abs(difActual))}</div>
-          <div style="font-size:10px;color:${estA.col};margin-top:2px">${estA.ico} ${estA.txt}</div>
-        </div>
-      </div>
-
-      <!-- 3 SECCIONES -->
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;">
-
-        <!-- SECCIÓN 1: Cierre del turno -->
-        <div style="padding:12px 16px;border-right:1px solid var(--border);">
-          <div style="font-size:10px;font-weight:600;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">1 · Cierre del turno</div>
-          ${tieneCierre ? `
-          <div style="font-size:11px;color:var(--text3);margin-bottom:6px">${ultLabel}</div>
-          <div style="font-size:12px;display:flex;flex-direction:column;gap:3px;">
-            <div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Inicio</span><span>$${fmt(billIni)}</span></div>
-            <div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Ventas</span><span style="color:${ventasAcum>=0?'var(--green)':'var(--red)'}">${ventasAcum>=0?'+':''}$${fmt(Math.abs(ventasAcum))}</span></div>
-            ${compAcum>0?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Comp.contable</span><span style="color:var(--blue)">+$${fmt(compAcum)}</span></div>`:''}
-            ${extAcum>0?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Extracciones</span><span style="color:var(--red)">-$${fmt(extAcum)}</span></div>`:''}
-            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:4px;padding-top:4px;"><span style="color:var(--text2)">Esperado</span><span style="font-weight:600">$${fmt(espCierre)}</span></div>
-            <div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Final real</span><span style="font-weight:600">$${fmt(billFin)}</span></div>
-            <div style="display:flex;justify-content:space-between;margin-top:2px;"><span style="color:var(--text2)">Diferencia</span><span style="font-weight:600;color:${estC.col}">${difCierre>=0?'+':''}$${fmt(Math.abs(difCierre))}</span></div>
-            <div style="font-size:10px;color:${estC.col};margin-top:2px">${estC.ico} ${estC.txt}</div>
-          </div>` : `<div style="font-size:12px;color:var(--text3)">⏳ Sin cierre post-corte</div>`}
-        </div>
-
-        <!-- SECCIÓN 2: Movimientos posteriores al cierre -->
-        <div style="padding:12px 16px;border-right:1px solid var(--border);">
-          <div style="font-size:10px;font-weight:600;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">2 · Post-cierre</div>
-          ${(extPost+opSalPost+compPost)===0
-            ? `<div style="font-size:12px;color:var(--text3)">Sin movimientos</div>`
-            : `<div style="font-size:12px;display:flex;flex-direction:column;gap:3px;">
-                ${extPost>0?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Extracciones</span><span style="color:var(--red)">-$${fmt(extPost)}</span></div>`:''}
-                ${opSalPost>0?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Op. salientes</span><span style="color:var(--red)">-$${fmt(opSalPost)}</span></div>`:''}
-                ${compPost>0?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Comp. posterior</span><span style="color:var(--blue)">+$${fmt(compPost)}</span></div>`:''}
-                <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:4px;padding-top:4px;font-weight:600;"><span>Total</span><span style="color:${movPosteriores>=0?'var(--green)':'var(--red)'}">${movPosteriores>=0?'+':''}$${fmt(Math.abs(movPosteriores))}</span></div>
-              </div>`
-          }
-        </div>
-
-        <!-- SECCIÓN 3: Inicio esperado vs real -->
-        <div style="padding:12px 16px;">
-          <div style="font-size:10px;font-weight:600;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">3 · Inicio del turno</div>
-          <div style="font-size:12px;display:flex;flex-direction:column;gap:3px;">
-            <div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Saldo base corte</span><span>$${fmt(base)}</span></div>
-            ${extEntreTurnos>0||opEntre>0?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Movimientos previos</span><span style="color:var(--red)">-$${fmt(extEntreTurnos+opEntre-compEntre)}</span></div>`:''}
-            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:4px;padding-top:4px;font-weight:600;"><span>Inicio esperado</span><span>$${fmt(iniEspProx)}</span></div>
-            <div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Inicio real cargado</span><span>${inicioReal!==null?'$'+fmt(inicioReal):'<span style=\'color:var(--text3)\'>—</span>'}</span></div>
-            ${difInicio!==null?`
-            <div style="display:flex;justify-content:space-between;margin-top:2px;"><span style="color:var(--text2)">Diferencia inicio</span><span style="font-weight:600;color:${estI.col}">${difInicio>=0?'+':''}$${fmt(Math.abs(difInicio))}</span></div>
-            <div style="font-size:10px;color:${estI.col};margin-top:2px">${estI.ico} ${estI.txt}</div>
-            `:`<div style="font-size:10px;color:var(--text3);margin-top:4px">⏳ sin turno cargado</div>`}
-          </div>
-        </div>
-
-      </div>
-    </div>`;
-  }).join('');
-
-  // Ocultar la tabla vieja
-  $('a-tb-bill').closest('table').style.display='none';
+    }).join('');
 
   fillSel('f-bill-sel',_bill,b=>b.nombre,b=>b.id,'Seleccioná billetera...');
   fillSel('f-bill-caj',_caj,c=>c.nombre,c=>c.id,'Todos los cajeros');
-  console.log("render completado:", _bill.length, "billeteras");
+}
+
+// ── FUNCIÓN SEPARADA: renderizar una tarjeta de billetera ──────
+function renderBillCard(b, _sPC, todasExts, todosSaldosBill, estLbl) {
+  const base  = Number(b.saldo_inicial||0);
+  const sbs   = (_sPC[b.id]||[]).sort((a,x) => a.fecha>x.fecha?1:a.fecha<x.fecha?-1:Number(a.numero_turno)-Number(x.numero_turno));
+  const ultSb = sbs.length > 0 ? sbs[sbs.length-1] : null;
+  const ultLabel = ultSb ? `${ultSb.fecha} T${ultSb.numero_turno} · ${ultSb.cajeros?.nombre||''}` : 'sin cierre post-corte';
+
+  // Fichas del último turno usando _tpTodosRaw
+  let ganVta=0, pnVta=0, joOk=false, daOk=false;
+  if(ultSb) {
+    (window._tpTodosRaw||[])
+      .filter(tp => tp.billetera_id===b.id && tp._fecha===ultSb.fecha && Number(tp._turno)===Number(ultSb.numero_turno))
+      .forEach(tp => {
+        const v = Number(tp.fichas_iniciales||0)-Number(tp.fichas_finales||0)-Number(tp.bonificaciones||0);
+        if(tp._panel==='Ganamos'){ganVta=v;joOk=true;}
+        else{pnVta=v;daOk=true;}
+      });
+  }
+  const ventasUlt = ganVta + pnVta;
+
+  // Ventas acumuladas post-corte (todos los turnos incluyendo el del saldo base)
+  const ventasAcum = (window._tpTodosRaw||[])
+    .filter(tp => tp.billetera_id===b.id)
+    .reduce((a,tp) => a+Number(tp.fichas_iniciales||0)-Number(tp.fichas_finales||0)-Number(tp.bonificaciones||0), 0);
+
+  // Extracciones
+  const extsBill = (todasExts||[]).filter(e => e.billetera_id===b.id);
+  const esPC = e => {
+    if(e.fecha > FECHA_CORTE) return true;
+    if(e.fecha===FECHA_CORTE){const c=e.created_at||''; return c>=DATETIME_CORTE && c<'2026-05-15T00:00:00';}
+    return false;
+  };
+  const extPostCorte = extsBill.filter(esPC);
+  const extDurante   = ultSb ? extPostCorte.filter(e=>e.fecha===ultSb.fecha).reduce((a,e)=>a+Number(e.monto||0),0) : 0;
+  const extEntre     = ultSb ? extPostCorte.filter(e=>e.fecha!==ultSb.fecha).reduce((a,e)=>a+Number(e.monto||0),0) : extPostCorte.reduce((a,e)=>a+Number(e.monto||0),0);
+  const extAcum      = extPostCorte.reduce((a,e)=>a+Number(e.monto||0),0);
+
+  // Extracciones posteriores al último cierre
+  const extPost = ultSb ? extsBill.filter(e=>{
+    if(e.fecha>ultSb.fecha) return true;
+    if(e.fecha===ultSb.fecha){const cat=e.created_at||'';return cat>(ultSb.created_at||'');}
+    return false;
+  }).reduce((a,e)=>a+Number(e.monto||0),0) : 0;
+
+  // Operaciones especiales
+  const opsBill = (window._opsBilleteras||[]).filter(o=>o.billetera_id===b.id);
+  const esOpPC  = o=>{const f=o.fecha_op||'';return f>FECHA_CORTE||(f===FECHA_CORTE&&(o.created_at_op||'')>=DATETIME_CORTE);};
+  const opSalAcum  = opsBill.filter(o=>(o.tipo==='saliente_real'||!o.tipo)&&esOpPC(o)).reduce((a,o)=>a+Number(o.monto||0),0);
+  const compAcum   = opsBill.filter(o=>o.tipo==='compensacion'&&esOpPC(o)).reduce((a,o)=>a+Number(o.monto||0),0);
+  const opSalPost  = ultSb ? opsBill.filter(o=>(o.tipo==='saliente_real'||!o.tipo)&&(o.fecha_op||'')>ultSb.fecha).reduce((a,o)=>a+Number(o.monto||0),0) : 0;
+  const compPost   = ultSb ? opsBill.filter(o=>o.tipo==='compensacion'&&(o.fecha_op||'')>ultSb.fecha).reduce((a,o)=>a+Number(o.monto||0),0) : 0;
+  const opSalTurno = ultSb ? opsBill.filter(o=>(o.tipo==='saliente_real'||!o.tipo)&&(o.fecha_op||'')===ultSb.fecha).reduce((a,o)=>a+Number(o.monto||0),0) : 0;
+  const compTurno  = ultSb ? opsBill.filter(o=>o.tipo==='compensacion'&&(o.fecha_op||'')===ultSb.fecha).reduce((a,o)=>a+Number(o.monto||0),0) : 0;
+
+  // INDICADOR PRINCIPAL
+  // real_aj  = ultimo_declarado - ext_post (ajuste por movimientos posteriores al cierre)
+  // esperado = base + ventas - ext_acum - op_sal + comp
+  //   IMPORTANTE: ext_acum ya INCLUYE ext_post → NO restar ext_post de nuevo en esperado
+  //   ext_post solo sirve para ajustar el saldo real declarado
+  const movPost          = -extPost - opSalPost + compPost;
+  const ultDeclarado     = ultSb ? Number(ultSb.saldo_final) : base;
+  const saldoRealAj      = ultDeclarado + movPost;
+  const saldoEsp         = base + ventasAcum - extAcum - opSalAcum + compAcum;
+  const difActual        = saldoRealAj - saldoEsp;
+  const estA             = estLbl(difActual);
+
+  // SECCIÓN 1: cierre
+  const billIni    = ultSb ? Number(ultSb.saldo_inicial) : base;
+  const billFin    = ultDeclarado;
+  const espCierre  = billIni + ventasUlt - extDurante - opSalTurno + compTurno;
+  const difCierre  = billFin - espCierre;
+  const esRend     = Math.abs(difCierre)>0 && Math.abs(difCierre)<=1000;
+  const estC       = esRend ? {ico:'💸',txt:'posible rendimiento',col:'var(--text2)'} : estLbl(difCierre);
+
+  // SECCIÓN 2: movimientos entre turnos (pre-último cierre pero post-corte)
+  const movEntre   = -extEntre;
+
+  // SECCIÓN 3: inicio esperado
+  const iniEsp     = base - extEntre - (ultSb ? opsBill.filter(o=>(o.tipo==='saliente_real'||!o.tipo)&&(o.fecha_op||'')<ultSb.fecha&&esOpPC(o)).reduce((a,o)=>a+Number(o.monto||0),0) : 0);
+  const difIni     = billIni - iniEsp;
+  const esRendIni  = Math.abs(difIni)>0 && Math.abs(difIni)<=1000;
+  const estI       = !ultSb ? {ico:'⏳',txt:'sin cierre',col:'var(--text3)'} : (esRendIni ? {ico:'💸',txt:'posible rendimiento',col:'var(--text2)'} : estLbl(difIni));
+
+  const panelWarn = (!joOk||!daOk) && ultSb
+    ? `<div style="background:rgba(251,191,36,.1);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--yellow);margin-bottom:8px;">
+        ⚠️ Cierre incompleto: falta ${!joOk?'Ganamos':'Panel Nuevo'}
+       </div>` : '';
+
+  return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:16px;overflow:hidden;">
+
+    <!-- HEADER -->
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <span style="font-weight:600;font-size:15px">${b.nombre}</span>
+        <span style="font-size:11px;color:var(--text3);margin-left:8px">${b.plataforma||'—'}</span>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-s sm" onclick="loadDetalleBill('${b.id}')">Ver detalle</button>
+        <button class="btn btn-y sm" onclick="abrirAjuste('${b.id}','${b.nombre}',${billFin})">Ajustar</button>
+        <button class="btn btn-r sm" onclick="delBill('${b.id}')">Eliminar</button>
+      </div>
+    </div>
+
+    <!-- INDICADOR PRINCIPAL: 4 columnas -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;border-bottom:1px solid var(--border);">
+      <div style="padding:10px 14px;border-right:1px solid var(--border);">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:3px;text-transform:uppercase">Último declarado</div>
+        <div style="font-size:15px;font-weight:600;font-family:var(--mono)">$${fmt(ultDeclarado)}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">${ultLabel}</div>
+      </div>
+      <div style="padding:10px 14px;border-right:1px solid var(--border);">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:3px;text-transform:uppercase">Real ajustado</div>
+        <div style="font-size:15px;font-weight:600;font-family:var(--mono);color:${movPost!==0?'var(--yellow)':'var(--green)'}">$${fmt(saldoRealAj)}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">${movPost!==0?`mov.post: ${movPost>=0?'+':''}$${fmt(Math.abs(movPost))}`:'sin mov.posteriores'}</div>
+      </div>
+      <div style="padding:10px 14px;border-right:1px solid var(--border);">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:3px;text-transform:uppercase">Esperado</div>
+        <div style="font-size:15px;font-weight:600;font-family:var(--mono)">$${fmt(saldoEsp)}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">base $${fmt(base)}</div>
+      </div>
+      <div style="padding:10px 14px;">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:3px;text-transform:uppercase">Diferencia real</div>
+        <div style="font-size:15px;font-weight:600;font-family:var(--mono);color:${estA.col}">${difActual>=0?'+':''}$${fmt(Math.abs(difActual))}</div>
+        <div style="font-size:10px;color:${estA.col};margin-top:2px">${estA.ico} ${estA.txt}</div>
+      </div>
+    </div>
+
+    <!-- 3 SECCIONES -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:0;font-size:12px;">
+
+      <!-- 1: Cierre del turno -->
+      <div style="padding:12px 14px;border-right:1px solid var(--border);">
+        <div style="font-size:10px;font-weight:600;color:var(--text2);margin-bottom:8px;text-transform:uppercase">1 · Cierre del turno</div>
+        ${!ultSb
+          ? `<div style="color:var(--text3)">⏳ Sin cierre post-corte</div>
+             ${opSalAcum>0?`<div style="font-size:10px;color:var(--text2);margin-top:4px;">💡 Op.saliente registrada: -$${fmt(opSalAcum)}<br>Sin saldo cargado posterior al corte</div>`:''}`
+          : `${panelWarn}
+             <div style="display:flex;flex-direction:column;gap:3px;">
+               <div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Inicio</span><span>$${fmt(billIni)}</span></div>
+               <div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Ganamos</span><span style="color:${ganVta>=0?'var(--green)':'var(--red)'}">${ganVta>=0?'+':''}$${fmt(Math.abs(ganVta))}</span></div>
+               <div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Panel Nuevo</span><span style="color:${pnVta>=0?'var(--green)':'var(--red)'}">${pnVta>=0?'+':''}$${fmt(Math.abs(pnVta))}</span></div>
+               ${compTurno>0?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Comp.contable</span><span style="color:var(--blue)">+$${fmt(compTurno)}</span></div>`:''}
+               ${extDurante>0?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Ext.turno</span><span style="color:var(--red)">-$${fmt(extDurante)}</span></div>`:''}
+               <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:4px;padding-top:4px;">
+                 <span style="color:var(--text2)">Esperado</span><span style="font-weight:600">$${fmt(espCierre)}</span>
+               </div>
+               <div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Final real</span><span style="font-weight:600">$${fmt(billFin)}</span></div>
+               <div style="display:flex;justify-content:space-between;margin-top:2px;">
+                 <span style="color:var(--text2)">Diferencia</span>
+                 <span style="font-weight:600;color:${estC.col}">${difCierre>=0?'+':''}$${fmt(Math.abs(difCierre))}</span>
+               </div>
+               <div style="font-size:10px;color:${estC.col};margin-top:2px">${estC.ico} ${estC.txt}</div>
+             </div>`
+        }
+      </div>
+
+      <!-- 2: Post-cierre -->
+      <div style="padding:12px 14px;border-right:1px solid var(--border);">
+        <div style="font-size:10px;font-weight:600;color:var(--text2);margin-bottom:8px;text-transform:uppercase">2 · Post-cierre</div>
+        ${(extPost+opSalPost+compPost)===0
+          ? `<div style="color:var(--text3)">Sin movimientos</div>`
+          : `<div style="display:flex;flex-direction:column;gap:3px;">
+              ${extPost>0?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Extracciones</span><span style="color:var(--red)">-$${fmt(extPost)}</span></div>`:''}
+              ${opSalPost>0?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Op.salientes</span><span style="color:var(--red)">-$${fmt(opSalPost)}</span></div>`:''}
+              ${compPost>0?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Comp.posterior</span><span style="color:var(--blue)">+$${fmt(compPost)}</span></div>`:''}
+              <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:4px;padding-top:4px;font-weight:600;">
+                <span>Total</span>
+                <span style="color:${movPost>=0?'var(--green)':'var(--red)'}">${movPost>=0?'+':''}$${fmt(Math.abs(movPost))}</span>
+              </div>
+            </div>`
+        }
+      </div>
+
+      <!-- 3: Inicio del turno -->
+      <div style="padding:12px 14px;">
+        <div style="font-size:10px;font-weight:600;color:var(--text2);margin-bottom:8px;text-transform:uppercase">3 · Inicio del turno</div>
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Saldo base</span><span>$${fmt(base)}</span></div>
+          ${extEntre>0?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Mov.previos</span><span style="color:var(--red)">-$${fmt(extEntre)}</span></div>`:''}
+          <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:4px;padding-top:4px;font-weight:600;">
+            <span>Inicio esperado</span><span>$${fmt(iniEsp)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;"><span style="color:var(--text2)">Inicio real</span><span>${ultSb?'$'+fmt(billIni):'<span style="color:var(--text3)">—</span>'}</span></div>
+          ${ultSb?`<div style="display:flex;justify-content:space-between;margin-top:2px;">
+            <span style="color:var(--text2)">Diferencia</span>
+            <span style="font-weight:600;color:${estI.col}">${difIni>=0?'+':''}$${fmt(Math.abs(difIni))}</span>
+          </div>
+          <div style="font-size:10px;color:${estI.col};margin-top:2px">${estI.ico} ${estI.txt}</div>`
+          :`<div style="font-size:10px;color:var(--text3);margin-top:4px">⏳ sin turno cargado</div>`}
+        </div>
+      </div>
+
+    </div>
+  </div>`;
 }
 
 async function saveBill(){
