@@ -1115,6 +1115,22 @@ async function adminBilleteras(){
     .order('fecha',{ascending:false})
     .order('created_at',{ascending:false});
 
+  // Pre-calcular saldo base correcto por billetera desde saldos_billetera
+  // Regla: último saldo_final con fecha < FECHA_CORTE
+  //     OR (fecha = FECHA_CORTE y numero_turno < TURNO_CORTE)
+  // Es el último cierre real antes o igual al corte de las 18hs
+  const _baseDesdeSD = {};
+  (todosSaldosBill||[]).forEach(s => {
+    const esPreCorte = s.fecha < FECHA_CORTE ||
+      (s.fecha === FECHA_CORTE && Number(s.numero_turno) < TURNO_CORTE);
+    if(!esPreCorte) return;
+    if(!_baseDesdeSD[s.billetera_id]) {
+      // El primer que encontramos (orden DESC) es el más reciente pre-corte
+      _baseDesdeSD[s.billetera_id] = Number(s.saldo_final);
+    }
+  });
+  window._baseDesdeSD = _baseDesdeSD;
+
   // Cargar turno_panel desde el corte exacto por billetera
   // Regla: el turno donde se registró el saldo base ya está incluido → excluirlo
   // Para cada billetera el arrastre empieza DESPUÉS del turno del saldo base
@@ -1242,9 +1258,10 @@ async function adminBilleteras(){
   // Helpers locales
   const estLbl = dif => {
     const a = Math.abs(dif);
-    if(a <= 1000)  return {ico:'✔', txt:'coincide',          col:'var(--green)'};
-    if(a <= 10000) return {ico:'⚠️', txt:'diferencia menor', col:'var(--yellow)'};
-    return             {ico:'🔴', txt:'revisar',              col:'var(--red)'};
+    if(a === 0)    return {ico:'✔', txt:'coincide',                              col:'var(--green)'};
+    if(a <= 1000)  return {ico:'✔', txt:'coincide',                              col:'var(--green)'};
+    if(a <= 15000) return {ico:'⚠️', txt:'diferencia menor / posible rendimiento acumulado', col:'var(--yellow)'};
+    return             {ico:'🔴', txt:'revisar',                                  col:'var(--red)'};
   };
 
   // Pre-calcular saldos post-corte agrupados por billetera_id
@@ -1280,7 +1297,8 @@ async function adminBilleteras(){
 // ── FUNCIÓN SEPARADA: renderizar una tarjeta de billetera ──────
 // ── DIAGNÓSTICO DE ORIGEN DE DIFERENCIA ──────────────────────
 // Recorre turnos cronológicamente y detecta el primer punto de divergencia
-function diagnosticarOrigen(b, _sPC, todasExts, base) {
+function diagnosticarOrigen(b, _sPC, todasExts, baseOrig) {
+  const base = window._baseDesdeSD?.[b.id] ?? baseOrig;
   const sbs = (_sPC[b.id]||[]).sort((a,x) =>
     a.fecha>x.fecha?1:a.fecha<x.fecha?-1:Number(a.numero_turno)-Number(x.numero_turno));
 
@@ -1381,7 +1399,9 @@ function diagnosticarOrigen(b, _sPC, todasExts, base) {
 }
 
 function renderBillCard(b, _sPC, todasExts, todosSaldosBill, estLbl) {
-  const base  = Number(b.saldo_inicial||0);
+  // Saldo base = último saldo_final pre-corte desde saldos_billetera (si existe)
+  // Sino, fallback a billeteras.saldo_inicial (corte manual)
+  const base = window._baseDesdeSD?.[b.id] ?? Number(b.saldo_inicial||0);
   const sbs   = (_sPC[b.id]||[]).sort((a,x) => a.fecha>x.fecha?1:a.fecha<x.fecha?-1:Number(a.numero_turno)-Number(x.numero_turno));
   const ultSb = sbs.length > 0 ? sbs[sbs.length-1] : null;
   const ultLabel = ultSb ? `${ultSb.fecha} T${ultSb.numero_turno} · ${ultSb.cajeros?.nombre||''}` : 'sin cierre post-corte';
