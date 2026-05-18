@@ -205,7 +205,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
     <button onclick="tab('a-cajeros',this)">👤 Cajeros</button>
     <button onclick="tab('a-turnos',this)">🎯 Turnos</button>
     <button onclick="tab('a-editar',this)">✏️ Editar cargas</button>
-    <button onclick="tab('a-billeteras',this)">👛 Billeteras</button>
+    <button onclick="console.log('ENTRÉ A BILLETERAS');tab('a-billeteras',this)">👛 Billeteras</button>
     <button onclick="tab('a-cruce',this)">🔀 Cruce</button>
     <button onclick="tab('a-extracciones',this)">💸 Extracciones</button>
     <button onclick="tab('a-operaciones',this)">⭐ Op. Especiales</button>
@@ -299,7 +299,8 @@ tr:hover td{background:rgba(255,255,255,.012);}
         <div class="st">Billeteras</div>
         <button class="btn sm" onclick="openModal('m-bill')">+ Nueva</button>
       </div>
-      <div class="tw" style="margin-bottom:20px;"><table><thead><tr><th>Billetera</th><th>Saldo real (cajero)</th><th id="th-esperada">Billetera esperada</th><th>Diferencia</th><th>Acciones</th></tr></thead><tbody id="a-tb-bill"></tbody></table></div>
+      <div class="tw" style="display:none;"><table><thead><tr><th>Billetera</th><th>Saldo real (cajero)</th><th id="th-esperada">Billetera esperada</th><th>Diferencia</th><th>Acciones</th></tr></thead><tbody id="a-tb-bill"></tbody></table></div>
+      <div id="a-bill-wrapper" style="padding-bottom:20px;"></div>
       <div class="st" style="margin-bottom:12px">Detalle por billetera</div>
       <div class="filtros">
         <select id="f-bill-sel" onchange="loadDetalleBill()"><option value="">Seleccioná billetera...</option></select>
@@ -1212,17 +1213,10 @@ async function adminBilleteras(){
   console.log("saldosPostCorte billeteras con datos:", Object.keys(saldosPostCorte||{}).length);
 
   // ── RENDER BILLETERAS ──────────────────────────────────────────
-  // Paso 1: Asegurar que el contenedor existe (independiente de la tabla vieja)
-  let wrapper = document.getElementById('a-bill-wrapper');
-  if(!wrapper){
-    wrapper = document.createElement('div');
-    wrapper.id = 'a-bill-wrapper';
-    const tableParent = $('a-tb-bill')?.closest('table')?.parentElement;
-    if(tableParent) tableParent.after(wrapper);
-    else document.querySelector('#tab-a-billeteras')?.appendChild(wrapper);
-  }
-  // Ocultar la tabla vieja
-  try { $('a-tb-bill').closest('table').style.display='none'; } catch(e){}
+  // El wrapper #a-bill-wrapper está en el HTML estático — siempre existe
+  const wrapper = document.getElementById('a-bill-wrapper');
+  if(!wrapper){ console.error('a-bill-wrapper no encontrado en DOM'); return; }
+  console.log("wrapper encontrado:", wrapper.id);
 
   if(!_bill.length){
     wrapper.innerHTML=`<div class="empty">Sin billeteras.</div>`;
