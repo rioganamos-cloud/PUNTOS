@@ -1159,9 +1159,14 @@ async function adminBilleteras(){
       .not('billetera_id','is',null);
     // Filtrar: solo turnos POSTERIORES al saldo base de esa billetera
     // y enriquecer con fecha, turno y panel para uso en la vista
-    // _tpTodosRaw: todas las fichas post-corte SIN filtrar por saldo base
-    // Se usa para calcular ventas del último turno aunque coincida con el saldo base
-    window._tpTodosRaw = (tp||[]).map(r=>({
+    // _tpTodosRaw: fichas post-corte SIN filtrar por saldo base
+    // SOLO turnos post-corte (NO incluir turnosAntesCorte para evitar inflar ventasAcum)
+    window._tpTodosRaw = (tp||[]).filter(r=>{
+      const turno = mapaTurnos[r.turno_id];
+      if(!turno) return false;
+      // Solo post-corte: fecha > FECHA_CORTE o (fecha = FECHA_CORTE y turno >= TURNO_CORTE)
+      return turno.fecha > FECHA_CORTE || (turno.fecha === FECHA_CORTE && turno.turno >= TURNO_CORTE);
+    }).map(r=>({
       ...r,
       _fecha: mapaTurnos[r.turno_id]?.fecha||'',
       _turno: mapaTurnos[r.turno_id]?.turno||0,
